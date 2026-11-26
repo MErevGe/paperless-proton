@@ -122,7 +122,7 @@ For each Proton account:
 1. Create source and processed folders in Proton Mail, for example `Paperless` and `Processed`.
 2. Select the **Proton account** at the top of **Paperless setup**.
 3. Enter the Paperless URL, such as `https://paperless.example.internal`, and the API token of the Paperless user who should own the documents. That user needs permission to view UI settings and to view, add and change email accounts and mail rules. Grant document viewing permission so the user can see imported documents.
-4. Choose the Proton email address and give the email account and rule recognizable names.
+4. Choose the Proton email address and give the email account and rule recognizable names. The email account name must be unique on that Paperless server, including accounts owned by other users. Use a different rule name for each profile belonging to the same Paperless user.
 5. Choose the source and destination from the folders loaded from that Proton account. For example, select `Folders/Paperless` and `Folders/Processed`. After creating or renaming folders, click **Refresh folders**. The default filename filter imports `*.pdf` attachments.
 6. Click **Test connection**. Check the displayed **Document owner**. The test verifies the token's user, existing account and rule ownership, and Paperless's SSL/TLS connection to Bridge. The Bridge address must be reachable from Paperless; `localhost` points to the Paperless container itself.
 7. Click **Apply to Paperless** and confirm. The app creates an email account and enabled import rule owned by that Paperless user. The rule assigns new imported documents to the same user. Later applications update this profile's account and rule. Check the permissions of documents already in Paperless separately.
