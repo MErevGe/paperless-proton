@@ -239,8 +239,9 @@ jobs:
           sonar.organization=merevge
           sonar.host.url=https://sonarcloud.io
           sonar.sourceEncoding=UTF-8
-          sonar.inclusions=bridge_container/**,ci/**,tests/**,Dockerfile,compose.yaml,.github/workflows/**
-          sonar.test.inclusions=tests/**
+          sonar.scanner.autoconfig.enabled=false
+          sonar.sources=bridge_container,ci,Dockerfile,compose.yaml,.github/workflows
+          sonar.tests=tests
           sonar.exclusions=bridge_container/generated/**
           sonar.python.version=3.14
           sonar.python.coverage.reportPaths=coverage.xml
