@@ -97,7 +97,8 @@ def parse_finding(raw: Any, project: str, kind: str) -> Finding:
     line = data.get("line")
     if line is not None:
         line = integer_value(line, 1)
-    resolution = text_value(data.get("resolution", "Unresolved"))
+    raw_resolution = data.get("resolution")
+    resolution = "Unresolved" if raw_resolution is None else text_value(raw_resolution)
     if kind == "issue":
         status = text_value(data.get("issueStatus", data.get("status")))
         impacts = tuple(

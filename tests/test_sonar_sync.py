@@ -16,6 +16,17 @@ from ci.sonar_sync import Synchronizer, main, summary, write_plan
 
 
 class FindingTests(unittest.TestCase):
+    def test_null_resolution_is_unresolved_and_other_invalid_values_are_rejected(self):
+        for kind, factory in (("issue", issue), ("hotspot", hotspot)):
+            with self.subTest(kind=kind):
+                finding = parse_finding(factory(resolution=None), PROJECT, kind)
+                self.assertEqual(finding.resolution, "Unresolved")
+                self.assertFalse(finding.fixed)
+                self.assertEqual(plan_changes([finding], {})[0].action, "create")
+                for invalid in ("", False, 0, [], {}):
+                    with self.subTest(value=invalid), self.assertRaises(SyncError):
+                        parse_finding(factory(resolution=invalid), PROJECT, kind)
+
     def test_all_priorities_qualities_and_statuses_are_tracked(self):
         findings = []
         for quality in ("SECURITY", "RELIABILITY", "MAINTAINABILITY"):
