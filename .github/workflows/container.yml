@@ -232,6 +232,22 @@ jobs:
             echo '::error::SONAR_TOKEN is missing. Configure it in Actions and Dependabot secrets. Fork pull requests require a reviewed branch in this repository.'
             exit 1
           fi
+      - name: Prepare scanner configuration
+        run: |
+          cat > "$RUNNER_TEMP/sonar-project.properties" <<'PROPERTIES'
+          sonar.projectKey=MErevGe_paperless-proton
+          sonar.organization=merevge
+          sonar.host.url=https://sonarcloud.io
+          sonar.sourceEncoding=UTF-8
+          sonar.sources=bridge_container,ci,Dockerfile,compose.yaml,.github/workflows
+          sonar.tests=tests
+          sonar.exclusions=bridge_container/generated/**
+          sonar.python.version=3.14
+          sonar.python.coverage.reportPaths=coverage.xml
+          sonar.javascript.lcov.reportPaths=.local/verification/lcov.info
+          sonar.qualitygate.wait=true
+          sonar.qualitygate.timeout=300
+          PROPERTIES
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
@@ -251,6 +267,9 @@ jobs:
           test -s .local/verification/lcov.info
       - name: Analyze code and enforce quality gate
         uses: SonarSource/sonarqube-scan-action@70bad232163b09d998ea0707ee80c0ec80798c16
+        with:
+          projectBaseDir: ''
+          args: -Dproject.settings=${{ runner.temp }}/sonar-project.properties
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
