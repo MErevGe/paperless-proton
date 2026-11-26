@@ -77,7 +77,7 @@ class Finding:
             f"- Rule: {markdown(self.rule)}",
             f"- Finding ID: {markdown(self.key)}",
             f"\n[Open in SonarQube Cloud]({link})\n",
-            "This section is synchronized from the main branch. Add notes below it.",
+            "This section is synchronized from the main branch. Add personal notes in comments.",
         ]
         if self.kind == "hotspot":
             lines.append(
