@@ -17,6 +17,9 @@ updates:
     open-pull-requests-limit: 5
   - package-ecosystem: gomod
     directory: /build/bridge
+    ignore:
+      - dependency-name: github.com/go-ctap/ctaphid
+        versions: ['>=0.11.0']
     schedule:
       interval: weekly
     open-pull-requests-limit: 5

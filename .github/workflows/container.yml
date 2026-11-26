@@ -2,7 +2,8 @@ name: Container
 
 on:
   push:
-    branches: [main, 'feature/**', 'fix/**', 'ci/**', 'security/**', 'dependencies/**']
+    branches: ['**']
+    tags: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -11,13 +12,16 @@ permissions:
 
 concurrency:
   group: container-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
     name: Verify
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      tag_object: ${{ steps.release.outputs.tag_object }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -26,10 +30,16 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: '3.14.10'
+      - name: Check release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 -m ci.release
       - name: Install test dependencies
         run: |
           python3 -m venv .venv
           .venv/bin/pip install --require-hashes -r requirements-dev.txt
+          .venv/bin/pip check
       - uses: actions/setup-node@395ad3262231945c25e8478fd5baf05154b1d79f
         with:
           node-version: '26.13.1'
@@ -40,8 +50,8 @@ jobs:
           npm audit --audit-level=moderate
       - name: Check formatting and types
         run: |
-          .venv/bin/ruff format --check bridge_container tests
-          .venv/bin/ruff check bridge_container tests
+          .venv/bin/ruff format --check bridge_container ci tests
+          .venv/bin/ruff check bridge_container ci tests
           .venv/bin/mypy
       - name: Verify generated Bridge client
         run: |
@@ -56,6 +66,9 @@ jobs:
           .venv/bin/python tests/check_coverage.py
       - name: Scan dependencies
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        env:
+          TRIVY_FILE_PATTERNS: 'pip:requirements-dev\.txt'
+          TRIVY_INCLUDE_DEV_DEPS: 'true'
         with:
           version: v0.76.2
           scan-type: fs
@@ -71,18 +84,21 @@ jobs:
           curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o actionlint.tar.gz
           echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum --check
           tar -xzf actionlint.tar.gz actionlint
+          curl --fail --silent --show-error --location https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz -o shellcheck.tar.xz
+          echo '8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  shellcheck.tar.xz' | sha256sum --check
+          tar -xJf shellcheck.tar.xz --strip-components=1 shellcheck-v0.11.0/shellcheck
           curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o gitleaks.tar.gz
           echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz' | sha256sum --check
           tar -xzf gitleaks.tar.gz gitleaks
           cd "$GITHUB_WORKSPACE"
-          "$RUNNER_TEMP/tools/actionlint"
+          "$RUNNER_TEMP/tools/actionlint" -shellcheck "$RUNNER_TEMP/tools/shellcheck"
           git ls-files -z | tar --null -T - -cf "$RUNNER_TEMP/source.tar"
           mkdir "$RUNNER_TEMP/source"
           tar -xf "$RUNNER_TEMP/source.tar" -C "$RUNNER_TEMP/source"
           "$RUNNER_TEMP/tools/gitleaks" dir --redact "$RUNNER_TEMP/source"
 
   build:
-    name: Build (${{ matrix.arch }})
+    name: Test container (${{ matrix.arch }})
     needs: verify
     strategy:
       fail-fast: false
@@ -102,7 +118,7 @@ jobs:
         with:
           version: v0.39.1
           driver-opts: image=moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
-      - name: Build image
+      - name: Build image for container tests
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
@@ -122,6 +138,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install --require-hashes -r requirements-dev.txt
+          .venv/bin/pip check
           .venv/bin/playwright install --with-deps chromium
           npm ci --ignore-scripts
       - name: Test container and web interface
@@ -164,12 +181,12 @@ jobs:
               raise SystemExit('Image contains blocking vulnerabilities')
           PY
       - name: Export tested image
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref_type == 'tag' && needs.verify.outputs.release_tag != ''
         env:
           ARCH: ${{ matrix.arch }}
         run: docker save "paperless-proton:test-$ARCH" -o "image-$ARCH.tar"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref_type == 'tag' && needs.verify.outputs.release_tag != ''
         with:
           name: image-${{ matrix.arch }}
           path: image-${{ matrix.arch }}.tar
@@ -184,7 +201,7 @@ jobs:
   publish:
     name: Publish
     needs: [verify, build]
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref_type == 'tag' && needs.verify.outputs.release_tag != ''
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -207,8 +224,11 @@ jobs:
       - name: Publish tested images
         env:
           REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.verify.outputs.release_tag }}
+          TAG_OBJECT: ${{ needs.verify.outputs.tag_object }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          test "$(gh api "repos/$REPOSITORY/git/ref/tags/$RELEASE_TAG" --jq '.object.sha')" = "$TAG_OBJECT"
           test "$(gh api "repos/$REPOSITORY" --jq '.private')" = true
           owner="${REPOSITORY%%/*}"
           package="${REPOSITORY##*/}"
@@ -232,7 +252,7 @@ jobs:
             docker tag "paperless-proton:test-$arch" "$image:sha-$GITHUB_SHA-$arch"
             docker push "$image:sha-$GITHUB_SHA-$arch"
           done
-          docker buildx imagetools create -t "$image:sha-$GITHUB_SHA" "$image:sha-$GITHUB_SHA-amd64" "$image:sha-$GITHUB_SHA-arm64"
+          docker buildx imagetools create -t "$image:$RELEASE_TAG" -t "$image:sha-$GITHUB_SHA" "$image:sha-$GITHUB_SHA-amd64" "$image:sha-$GITHUB_SHA-arm64"
           test "$(gh api "$package_api" --jq '.visibility')" = private
-          digest="$(docker buildx imagetools inspect "$image:sha-$GITHUB_SHA" --format '{{.Manifest.Digest}}')"
-          printf 'Image for amd64 and arm64:\n\n`%s@%s`\n' "$image" "$digest" >> "$GITHUB_STEP_SUMMARY"
+          digest="$(docker buildx imagetools inspect "$image:$RELEASE_TAG" --format '{{.Manifest.Digest}}')"
+          printf 'Version %s for amd64 and arm64:\n\n%s\n\nPinned image:\n\n%s\n' "$RELEASE_TAG" "\`$image:$RELEASE_TAG\`" "\`$image@$digest\`" >> "$GITHUB_STEP_SUMMARY"

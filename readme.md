@@ -38,7 +38,9 @@ Wait for the container to become healthy.
 
 ### Using a published image
 
-After an image has been published, open the latest successful **Container** workflow on `main` in the repository's **Actions** tab. Copy the image address, including `@sha256:…`, from its summary into `BRIDGE_IMAGE`.
+Images are published for signed version tags such as `v1.2.3` or `v1.2.3-rc.1`, after all checks pass for amd64 and arm64. Open the successful **Container** workflow for your chosen version in the repository's **Actions** tab. Copy the image address, including `@sha256:…`, from its summary into `BRIDGE_IMAGE`. The summary also shows the version tag.
+
+Branch pushes, pull requests and manual runs execute the checks, including temporary images for the container and browser tests. They do not publish release images. Release tags must have a signature verified by GitHub.
 
 For a private image, run `docker login ghcr.io`. Enter your GitHub username and a **personal access token (classic)** with `read:packages` as the password. Then run:
 
@@ -64,6 +66,8 @@ docker compose exec bridge python3 -m bridge_container web-setup-token
 ```
 
 Enter the token in the web interface and choose an admin password with at least 12 characters. The token stops working once setup is complete. This admin password is separate from your Proton password.
+
+Use **Appearance** to choose **Light**, **Dark** or **System**. Your browser remembers the choice. **System** follows your device's appearance, and the logo lettering switches between black and white automatically.
 
 ### Opening the interface from another computer
 
