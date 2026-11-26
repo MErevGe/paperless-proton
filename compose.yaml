@@ -1,0 +1,30 @@
+name: paperless-proton
+
+services:
+  bridge:
+    image: ${BRIDGE_IMAGE:?Set BRIDGE_IMAGE to the image digest from GitHub Actions}
+    init: true
+    restart: unless-stopped
+    environment:
+      BRIDGE_HOST: ${BRIDGE_HOST:?Set BRIDGE_HOST to the bridge hostname or IP}
+    ports:
+      - "${BRIDGE_BIND_IP:-127.0.0.1}:${BRIDGE_PORT:-1993}:1993"
+    volumes:
+      - bridge-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  bridge-data:

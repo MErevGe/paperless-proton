@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!bridge_container/
+!bridge_container/*.py
+!build/
+!build/bridge/
+!build/bridge/go.mod
+!build/bridge/go.sum
