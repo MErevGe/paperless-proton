@@ -32,7 +32,15 @@ Test that profile and check the displayed document owner before applying it. Con
 
 ## Back up and restore
 
-The default volume is **`paperless-proton_bridge-data`**. It contains the Proton session, encryption keys, API tokens, settings, certificates, and mail cache. Protect backups like passwords. Also keep your `.env` and Compose configuration; back up Paperless itself separately.
+The supplied Compose file sets the project name to `paperless-proton`, so its default volume is **`paperless-proton_bridge-data`**. If you override the project name with `-p` or `COMPOSE_PROJECT_NAME`, the volume is named `<project-name>_bridge-data`. Use the same project name when backing up and restoring.
+
+List the volume used by your deployment:
+
+```sh
+docker compose volumes -q bridge
+```
+
+It contains the Proton session, encryption keys, API tokens, settings, certificates, and mail cache. Protect backups like passwords. Also keep your `.env` and Compose configuration; back up Paperless itself separately.
 
 Stop Bridge before taking a volume backup with your normal backup tool:
 

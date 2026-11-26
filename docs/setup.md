@@ -71,7 +71,7 @@ Export the web interface's public certificate authority:
 docker compose exec -T bridge python3 -m bridge_container web-certificate > paperless-proton-web-ca.crt
 ```
 
-Import this file into your browser's certificate authorities and trust it for websites. Open **https://localhost:8443** on the Bridge host.
+Import this file into your browser's certificate authorities and trust it for websites. Open the HTTPS address configured as `WEB_ORIGIN`; the default is **https://localhost:8443** on the Bridge host.
 
 Retrieve the one-time setup token:
 
@@ -85,13 +85,13 @@ Under **Appearance**, choose **Light**, **Dark**, or **System**. The browser rem
 
 ### Access from another computer
 
-To keep the web port private, run this SSH tunnel on the computer with your browser:
+To keep the web port private, run this SSH tunnel on the computer with your browser. This example uses the default `WEB_PORT` and `WEB_ORIGIN`:
 
 ```sh
 ssh -L 8443:127.0.0.1:8443 user@bridge.example.internal
 ```
 
-Copy the exported web CA to that computer, trust it in the browser, and open `https://localhost:8443`.
+Copy the exported web CA to that computer and trust it in the browser. With these defaults, open `https://localhost:8443`. If you use a different `WEB_PORT`, replace both `8443` values in the tunnel command and set `WEB_ORIGIN` to `https://localhost:<your-port>` before recreating the container.
 
 For direct LAN or VPN access, set `WEB_BIND_IP` to the Bridge server's LAN or VPN IP and `WEB_ORIGIN` to the exact HTTPS address you will open, such as `https://bridge.example.internal:8443`. The port must match `WEB_PORT`. Run `docker compose up -d` to recreate the container and trust the web CA on that computer. Keep the web port off the public internet.
 

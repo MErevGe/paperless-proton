@@ -53,7 +53,7 @@ docker compose exec -T bridge python3 -m bridge_container web-certificate > pape
 docker compose exec bridge python3 -m bridge_container web-setup-token
 ```
 
-Trust `paperless-proton-web-ca.crt` as a certificate authority in your browser. Open **https://localhost:8443**, enter the setup token, and choose an admin password with at least 12 characters. To use a browser on another computer, follow [remote access](docs/setup.md#access-from-another-computer).
+Trust `paperless-proton-web-ca.crt` as a certificate authority in your browser. Open the configured `WEB_ORIGIN` (default **https://localhost:8443**), enter the setup token, and choose an admin password with at least 12 characters. To use a browser on another computer, follow [remote access](docs/setup.md#access-from-another-computer).
 
 Complete the connection in the interface:
 
