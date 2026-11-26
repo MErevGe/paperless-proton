@@ -1,0 +1,65 @@
+name: SonarQube issues
+
+on:
+  workflow_run:
+    workflows: [Container]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Preview changes without writing GitHub issues
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-issues
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Synchronize SonarQube findings
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       contains(fromJSON('["push", "workflow_dispatch"]'), github.event.workflow_run.event) &&
+       contains(fromJSON('["success", "failure"]'), github.event.workflow_run.conclusion))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14.10'
+      - name: Preview or synchronize findings
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          SONAR_PROJECT_KEY: MErevGe_paperless-proton
+          SONAR_REVISION: ${{ github.event.workflow_run.head_sha || github.sha }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          args=(--plan "$RUNNER_TEMP/sonar-issue-plan.json")
+          if [[ "$DRY_RUN" != "true" ]]; then
+            args+=(--apply)
+          fi
+          python3 -m ci.sonar_sync "${args[@]}"
+      - name: Upload synchronization plan
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sonar-issue-plan
+          path: ${{ runner.temp }}/sonar-issue-plan.json
+          if-no-files-found: ignore
+          retention-days: 7
