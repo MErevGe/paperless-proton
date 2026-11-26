@@ -28,7 +28,7 @@ class ApiTests(unittest.TestCase):
         self.response.status = 200
         self.response.read.return_value = b'{"result": "ok"}'
         self.factory = patch("ci.sonar_api.HTTPSConnection", return_value=self.connection)
-        self.factory.start()
+        self.connection_factory = self.factory.start()
         self.addCleanup(self.factory.stop)
 
     def test_get_encodes_queries_and_redacts_response_credentials(self):
@@ -42,6 +42,9 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer test-credential")
         self.assertNotIn("X-GitHub-Api-Version", kwargs["headers"])
         self.connection.close.assert_called_once()
+        context = self.connection_factory.call_args.kwargs["context"]
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
 
     def test_github_writes_json_with_a_fixed_api_version(self):
         Api("api.github.com", "test-credential").request(

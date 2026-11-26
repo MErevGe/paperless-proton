@@ -75,7 +75,10 @@ class Api:
         if body is not None:
             headers["Content-Type"] = "application/json"
             payload = json.dumps(body).encode("utf-8")
-        connection = HTTPSConnection(self.host, timeout=30, context=ssl.create_default_context())
+        context = ssl.create_default_context()
+        context.check_hostname = True
+        context.verify_mode = ssl.CERT_REQUIRED
+        connection = HTTPSConnection(self.host, timeout=30, context=context)
         try:
             connection.request(method, path, body=payload, headers=headers)
             response = connection.getresponse()
