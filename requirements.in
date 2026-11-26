@@ -1,3 +1,4 @@
 grpcio==1.85.4
+imapclient==4.3.0
 protobuf==7.36.2
 waitress==3.0.2

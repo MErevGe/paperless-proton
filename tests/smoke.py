@@ -118,6 +118,9 @@ def smoke(image: str, run_browser: bool = False) -> None:
         assert docker("exec", name, "cat", "/data/password-store/.gpg-id").stdout == key_id
         assert docker("exec", name, "cat", "/data/tls/ca.crt").stdout == exported
         assert docker("exec", name, "pass", "show", "smoke-test").stdout == "roundtrip-test-value\n"
+        if run_browser:
+            persisted = docker("exec", name, "pass", "show", "paperless-proton/api-token").stdout
+            assert persisted == "test-paperless-api-token-value\n"
         docker("stop", "--time", "20", name)
         configured = docker(
             "run",

@@ -12,6 +12,7 @@ import grpc
 
 from bridge_container.bridge_api import BridgeAPI
 from bridge_container.certificates import subject_alt_name
+from bridge_container.mail_folders import list_folders
 from bridge_container.paperless import Paperless
 from bridge_container.settings import Settings, text_field, web_origin
 from bridge_container.web_auth import Auth, session_cookie
@@ -149,6 +150,7 @@ class WebApp:
             "accounts": self.bridge.accounts() if self.bridge.ready else [],
             "login": self.bridge.status(),
             "settings": self.settings.value,
+            "paperless_token_saved": self.paperless.token_saved(),
             "active_host": (self.data / "tls/host").read_text().strip(),
         }
 
@@ -163,6 +165,12 @@ class WebApp:
             self.bridge.logout(payload.get("id"))
         elif path == "/api/proton/credentials":
             return self.bridge.credentials(payload.get("id"), payload.get("address"))
+        elif path == "/api/proton/folders":
+            return {
+                "folders": list_folders(
+                    self.data, self.bridge, payload.get("id"), payload.get("address")
+                )
+            }
         elif path == "/api/connection":
             host = text_field(payload.get("host"), "Bridge hostname", 253)
             subject_alt_name(host)

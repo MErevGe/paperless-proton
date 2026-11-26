@@ -7,6 +7,9 @@ let initialized = false;
 let accountSignature = "";
 let noticeTimer;
 let polling = false;
+let folderAccount = null;
+let folderRequest = 0;
+let foldersReady = false;
 
 function notice(message, error = false) {
   const node = $("#notice");
@@ -68,6 +71,9 @@ function showGate() {
   csrf = "";
   initialized = false;
   accountSignature = "";
+  folderAccount = null;
+  folderRequest += 1;
+  foldersReady = false;
   clearSecrets();
   $("#admin-form").hidden = false;
   $("#gate").hidden = false;
@@ -262,6 +268,72 @@ function fillSettings(settings) {
   ]);
 }
 
+async function loadFolders(force = false) {
+  const selected = $("#proton-address").value;
+  if (!force && selected === folderAccount) return;
+  const sameAccount = selected === folderAccount;
+  folderAccount = selected;
+  const revision = ++folderRequest;
+  foldersReady = false;
+  const selects = [$("#source-folder"), $("#destination-folder")];
+  const savedAccount = JSON.stringify([
+    state.settings.proton_id,
+    state.settings.address,
+  ]);
+  const previous = selects.map((input) =>
+    sameAccount && input.value
+      ? input.value
+      : selected === savedAccount
+        ? state.settings[input.name]
+        : "",
+  );
+  for (const input of selects) {
+    input.disabled = true;
+    input.replaceChildren(
+      new Option(
+        selected ? "Loading folders…" : "Choose an email address first",
+        "",
+      ),
+    );
+  }
+  $("#folder-status").textContent = selected
+    ? "Loading folders from Proton…"
+    : "Choose a connected email address to load its folders.";
+  if (!selected) return;
+  try {
+    const [id, address] = JSON.parse(selected);
+    const result = await request("proton/folders", { id, address });
+    if (revision !== folderRequest) return;
+    for (const [index, input] of selects.entries()) {
+      input.replaceChildren(new Option("Choose a folder", ""));
+      for (const name of result.folders) input.add(new Option(name, name));
+      input.value = result.folders.includes(previous[index])
+        ? previous[index]
+        : "";
+      input.disabled = !result.folders.length;
+    }
+    foldersReady = result.folders.length > 0;
+    const missing = previous.some(
+      (name) => name && !result.folders.includes(name),
+    );
+    $("#folder-status").textContent = !foldersReady
+      ? "No selectable folders found. Create folders in Proton Mail, then refresh."
+      : missing
+        ? "A previously selected folder no longer exists. Choose a folder from the list."
+        : `${result.folders.length} folders loaded from Proton. Choose different source and destination folders.`;
+  } catch (error) {
+    if (revision !== folderRequest) return;
+    for (const input of selects)
+      input.replaceChildren(new Option("Folders unavailable", ""));
+    $("#folder-status").textContent = error.message;
+  }
+}
+
+$("#proton-address").addEventListener("change", () => loadFolders());
+$("#refresh-folders").addEventListener("click", () =>
+  busy($("#refresh-folders"), () => loadFolders(true)),
+);
+
 async function refresh() {
   if (!authenticated || polling) return;
   polling = true;
@@ -287,12 +359,19 @@ async function refresh() {
       ? "Confirm your first document in Paperless."
       : "Connect your document archive.";
     $("#restart-notice").hidden = state.active_host === state.settings.host;
+    $("#token-status").textContent = state.paperless_token_saved
+      ? "API token saved securely. Leave the field blank to keep it."
+      : "No API token saved. Enter a token and save the settings.";
+    $("#paperless-token").placeholder = state.paperless_token_saved
+      ? "Saved — enter a new token to replace it"
+      : "Paste your Paperless API token";
     renderAccounts(state.accounts);
     renderLogin(state.login);
     if (!initialized) {
       fillSettings(state.settings);
       initialized = true;
     }
+    void loadFolders();
   } finally {
     polling = false;
   }
@@ -362,6 +441,13 @@ $("#reveal-password").addEventListener("click", () => {
 
 async function savePaperless() {
   const form = $("#paperless-form");
+  if (!foldersReady) {
+    notice(
+      "Load the Proton folders and choose a source and destination before saving.",
+      true,
+    );
+    return false;
+  }
   if (!form.reportValidity()) return false;
   const payload = Object.fromEntries(new FormData(form));
   const [id, address] = JSON.parse($("#proton-address").value);
@@ -369,8 +455,8 @@ async function savePaperless() {
   payload.address = address;
   payload.allow_http = $("#allow-http").checked;
   payload.maximum_age = Number(payload.maximum_age);
-  $("#paperless-token").value = "";
   await request("paperless/save", payload);
+  $("#paperless-token").value = "";
   await refresh();
   return true;
 }

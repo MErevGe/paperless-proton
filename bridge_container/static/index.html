@@ -313,6 +313,7 @@
                 </p>
                 <pre><code>environment:
   PAPERLESS_EMAIL_CERTIFICATE_LOCATION: /etc/paperless/proton-bridge-ca.crt
+  PAPERLESS_EMAIL_ALLOW_INTERNAL_HOSTS: "true"
 volumes:
   - ./proton-bridge-ca.crt:/etc/paperless/proton-bridge-ca.crt:ro</code></pre>
                 <p class="hint">
@@ -353,10 +354,14 @@ volumes:
                     autocomplete="off"
                     maxlength="256"
                   />
+                  <p id="token-status" class="hint" role="status">
+                    No API token saved.
+                  </p>
                   <p class="hint">
                     Copy the token from your Paperless user profile. It needs
-                    permission to add and change mail accounts and mail rules.
-                    Leave blank to keep the saved token.
+                    permission to view, add and change mail accounts and mail
+                    rules. The field clears after a successful save. Leave it
+                    blank to keep the saved token.
                   </p>
                   <label for="proton-address">Proton email address</label
                   ><select id="proton-address" required>
@@ -413,19 +418,29 @@ volumes:
                     required
                     maxlength="256"
                   /><label for="source-folder">Source folder</label
-                  ><input
-                    id="source-folder"
-                    name="folder"
-                    required
-                    maxlength="256"
-                  /><label for="destination-folder"
+                  ><select id="source-folder" name="folder" required disabled>
+                    <option value="">
+                      Choose a connected email address first
+                    </option></select
+                  ><label for="destination-folder"
                     >Move processed email to</label
-                  ><input
+                  ><select
                     id="destination-folder"
                     name="destination"
                     required
-                    maxlength="256"
-                  /><label for="attachment-filter"
+                    disabled
+                  >
+                    <option value="">
+                      Choose a connected email address first
+                    </option>
+                  </select>
+                  <p id="folder-status" class="hint" role="status">
+                    Choose a connected email address to load its folders.
+                  </p>
+                  <button id="refresh-folders" type="button" class="secondary">
+                    Refresh folders
+                  </button>
+                  <label for="attachment-filter"
                     >Attachment filename filter</label
                   ><input
                     id="attachment-filter"

@@ -1,10 +1,12 @@
 import http.client
 import ipaddress
 import json
+import os
 import re
 import socket
 import ssl
 import subprocess
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -55,6 +57,10 @@ class Paperless:
     def __init__(self, settings: Settings, bridge: BridgeAPI):
         self.settings = settings
         self.bridge = bridge
+
+    def token_saved(self) -> bool:
+        store = Path(os.environ.get("PASSWORD_STORE_DIR", self.settings.data / "password-store"))
+        return (store / "paperless-proton/api-token.gpg").is_file()
 
     def token(self) -> str:
         result = subprocess.run(
@@ -147,13 +153,33 @@ class Paperless:
                 raise ValueError("Paperless response is too large")
             if not 200 <= response.status < 300:
                 messages = {
-                    400: "Paperless rejected the request. Check the settings and Paperless logs.",
+                    400: "Paperless rejected the request. Check the mail settings, Bridge "
+                    "certificate and PAPERLESS_EMAIL_ALLOW_INTERNAL_HOSTS in Paperless.",
                     401: "Paperless rejected the API token.",
                     403: "The API token needs permission to manage mail accounts and rules.",
                     404: "Paperless API endpoint not found. Check the URL and Paperless version.",
+                    429: "Paperless is limiting requests. Wait briefly and try again.",
                 }
-                raise ValueError(messages.get(response.status, "Paperless request failed."))
-            return json.loads(data)
+                if 300 <= response.status < 400:
+                    message = (
+                        "Paperless redirected the request. Enter its final URL, including "
+                        "HTTPS and any path prefix. Redirects are not followed."
+                    )
+                elif response.status >= 500:
+                    message = (
+                        "Paperless reported a server error. Check its container logs. "
+                        "For a Bridge test, check the reachable Bridge address and the mounted "
+                        "CA file configured in PAPERLESS_EMAIL_CERTIFICATE_LOCATION."
+                    )
+                else:
+                    message = messages.get(response.status, "Paperless rejected the request.")
+                raise ValueError(f"{message} (HTTP {response.status})")
+            try:
+                return json.loads(data)
+            except ValueError:
+                raise ValueError(
+                    "Paperless returned an invalid API response. Check its URL."
+                ) from None
         finally:
             connection.close()
             sock.close()
@@ -173,6 +199,19 @@ class Paperless:
         }
 
     def test(self) -> None:
+        self.request("GET", "mail_accounts/?page_size=1")
+        host = self.settings.value["host"]
+        try:
+            address = ipaddress.ip_address(host)
+            local = address.is_loopback or address.is_unspecified
+        except ValueError:
+            local = host.lower().rstrip(".") == "localhost" or host.lower().endswith(".localhost")
+        if local:
+            raise ValueError(
+                "Paperless API access succeeded. In Bridge connection, replace localhost or the "
+                "loopback address with this server's LAN or VPN address, save and restart Bridge. "
+                "Set BRIDGE_BIND_IP to its LAN or VPN address in .env and recreate the container."
+            )
         account = self.account()
         if self.settings.value.get("account_id"):
             account["id"] = self.settings.value["account_id"]

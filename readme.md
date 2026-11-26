@@ -102,6 +102,7 @@ Copy `proton-bridge-ca.crt` to your Paperless Compose directory. Add these entri
 ```yaml
 environment:
   PAPERLESS_EMAIL_CERTIFICATE_LOCATION: /etc/paperless/proton-bridge-ca.crt
+  PAPERLESS_EMAIL_ALLOW_INTERNAL_HOSTS: "true"
 volumes:
   - ./proton-bridge-ca.crt:/etc/paperless/proton-bridge-ca.crt:ro
 ```
@@ -115,13 +116,13 @@ Create `Paperless` and `Processed` folders in Proton Mail.
 Open **Paperless setup** in this app:
 
 1. Enter the Paperless URL, such as `https://paperless.example.internal`.
-2. Copy the API token from your Paperless user profile. The user needs permission to add and change email accounts and mail rules.
+2. Copy the API token from your Paperless user profile. The user needs permission to view, add and change email accounts and mail rules.
 3. Choose the connected Proton email address.
-4. Check the import rule. The defaults read `*.pdf` attachments from `Folders/Paperless` and move processed email to `Folders/Processed`.
-5. Click **Test connection**. This asks Paperless to connect to Bridge using SSL/TLS, including certificate verification.
+4. Choose the source and destination from the folders loaded from Proton. For example, select `Folders/Paperless` and `Folders/Processed`. After creating or renaming folders in Proton, click **Refresh folders**. The default filename filter imports `*.pdf` attachments.
+5. Click **Test connection**. This checks API access, then asks Paperless to connect to Bridge using SSL/TLS, including certificate verification. The Bridge address must be reachable from Paperless; `localhost` points to the Paperless container itself.
 6. Click **Apply to Paperless** and confirm. The app creates the email account and enables the import rule. Later applications update the account and rule created by this app.
 
-The API token is stored in the encrypted password store. Leave its field empty to keep the saved token. Changing the Paperless URL requires a token again. The app does not adopt unrelated existing email accounts or rules; use distinct names.
+The API token is stored in the encrypted password store. After a successful save, its field clears and **API token saved securely** appears. Leave the field empty to keep the saved token, including after a restart. If saving fails, the entered token stays in the field so you can retry. Changing the Paperless URL requires a token again. The app does not adopt unrelated existing email accounts or rules; use distinct names.
 
 If Paperless uses a private HTTPS certificate, paste its CA certificate under **Connection options**. If it only supports HTTP on your trusted LAN or VPN, explicitly enable HTTP there. HTTP sends the API token and Bridge password without transport encryption.
 
@@ -160,7 +161,9 @@ Use the new token to choose a password. Your Proton accounts and Paperless setti
 - **Web page rejects the address:** Open exactly the address in `WEB_ORIGIN`. Check that its port matches `WEB_PORT`, then recreate the container after changes.
 - **Browser certificate error:** Trust the web CA exported in step 2. The browser address must match `WEB_ORIGIN`.
 - **Bridge is starting:** Wait briefly, then check `docker compose logs --tail=50 bridge` and the server's internet connection.
-- **Paperless connection fails:** Check the bridge hostname, port, DNS and firewall from the Paperless server. Recent Paperless versions must allow internal mail servers (`PAPERLESS_EMAIL_ALLOW_INTERNAL_HOSTS=true`).
+- **Paperless connection fails:** Check the bridge hostname, port, DNS and firewall from the Paperless server. Use a LAN or VPN address for both the saved Bridge hostname and `BRIDGE_BIND_IP`; `localhost` and `127.0.0.1` cannot connect two servers. Recent Paperless versions must allow internal mail servers (`PAPERLESS_EMAIL_ALLOW_INTERNAL_HOSTS=true`).
+- **Paperless returns HTTP 500:** Check the Paperless container logs immediately after the test. Confirm the Bridge address is reachable and that the certificate path inside Paperless points to a readable certificate file, not a missing file or directory. Recreate Paperless after changing its mounts or environment.
+- **Proton folders are missing:** Check the selected email address, then click **Refresh folders**. Create folders in Proton Mail first. If a saved folder was deleted or renamed, select its replacement before saving.
 - **Paperless certificate error:** Check the certificate mount and `PAPERLESS_EMAIL_CERTIFICATE_LOCATION`, including any separate mail worker. Restart the bridge after changing its hostname.
 - **Paperless rejects the API token:** Check the token and the user's permissions. Include a path prefix in the Paperless URL if your installation uses one.
 - **An account was created but the rule failed:** Correct the reported problem and apply again. The saved account is reused. If an object was deleted manually in Paperless, restore it or adjust the setup there.

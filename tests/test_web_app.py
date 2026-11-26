@@ -65,6 +65,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(self.request("/api/state")[0], 401)
         self.assertEqual(self.request("/api/certificate")[0], 401)
         self.assertEqual(self.request("/api/paperless/apply", {})[0], 401)
+        self.assertEqual(self.request("/api/proton/folders", {})[0], 401)
         self.authenticate()
         self.assertTrue(self.request("/api/session")[1]["authenticated"])
         self.assertEqual(self.request("/api/state")[1]["active_host"], "localhost")
@@ -138,6 +139,13 @@ class WebTests(unittest.TestCase):
                 200,
             )
         self.bridge.login.assert_called_with("person", "secret")
+        with patch("bridge_container.web_app.list_folders", return_value=["INBOX"]) as folders:
+            self.assertEqual(
+                self.request("/api/proton/folders", {"id": "one", "address": "mail@test"})[1],
+                {"folders": ["INBOX"]},
+            )
+            folders.assert_called_once_with(self.data, self.bridge, "one", "mail@test")
+            self.assertEqual(self.request("/api/proton/folders", {}, HTTP_X_CSRF_TOKEN="")[0], 403)
         with patch.object(self.app, "paperless") as paperless:
             for path in ("paperless/save", "paperless/test", "paperless/apply"):
                 self.assertEqual(self.request("/api/" + path, {})[0], 200)

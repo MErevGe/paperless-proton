@@ -1,3 +1,4 @@
+import os
 import socket
 import ssl
 import tempfile
@@ -109,6 +110,14 @@ class PaperlessTests(unittest.TestCase):
             self.paperless.save(self.payload | {"paperless_ca": "valid-pem"})
             context.assert_called_with(cadata="valid-pem")
 
+    def test_token_status_reports_storage_without_reading_secret(self):
+        with patch.dict(os.environ, {"PASSWORD_STORE_DIR": self.directory.name}):
+            self.assertFalse(self.paperless.token_saved())
+            token = Path(self.directory.name) / "paperless-proton/api-token.gpg"
+            token.parent.mkdir()
+            token.write_bytes(b"encrypted-content")
+            self.assertTrue(self.paperless.token_saved())
+
     @patch("bridge_container.paperless.target_address", return_value="192.168.1.50")
     @patch("bridge_container.paperless.socket.create_connection")
     @patch("bridge_container.paperless.http.client.HTTPConnection")
@@ -131,12 +140,17 @@ class PaperlessTests(unittest.TestCase):
                 connect.return_value, server_hostname="paperless.test"
             )
             self.assertIn("Token opaque-token", str(http.return_value.request.call_args))
-            for code in (301, 400, 401, 403, 404, 500):
+            for code in (301, 307, 400, 401, 403, 404, 405, 429, 500, 502, 503):
                 response.status = code
                 response.read.return_value = b"private upstream error and token"
                 with self.assertRaises(ValueError) as error:
                     self.paperless.request("GET", "mail_accounts/")
                 self.assertNotIn("private upstream", str(error.exception))
+                self.assertIn(f"HTTP {code}", str(error.exception))
+            response.status = 200
+            response.read.return_value = b"<html>private error</html>"
+            with self.assertRaisesRegex(ValueError, "invalid API response"):
+                self.paperless.request("GET", "mail_accounts/")
             response.status = 200
             response.read.return_value = b"x" * 1048577
             with self.assertRaisesRegex(ValueError, "too large"):
@@ -150,20 +164,24 @@ class PaperlessTests(unittest.TestCase):
 
     def test_test_and_apply_use_paperless_side_validation_and_resume_partial_setup(self):
         self.settings.value.update(self.payload)
+        self.settings.value["host"] = "bridge.example.test"
         with patch.object(self.paperless, "request") as request:
-            request.side_effect = [{"success": True}, {"id": 7}, ValueError("rule rejected")]
+            request.side_effect = [{}, {"success": True}, {"id": 7}, ValueError("rule rejected")]
             with self.assertRaisesRegex(ValueError, "rule rejected"):
                 self.paperless.apply()
             self.assertEqual(self.settings.value["account_id"], 7)
             self.assertIsNone(self.settings.value.get("rule_id"))
-            self.assertEqual(request.call_args_list[0].args[:2], ("POST", "mail_accounts/test/"))
-            account = request.call_args_list[1].args[2]
+            self.assertEqual(
+                request.call_args_list[0].args[:2], ("GET", "mail_accounts/?page_size=1")
+            )
+            self.assertEqual(request.call_args_list[1].args[:2], ("POST", "mail_accounts/test/"))
+            account = request.call_args_list[2].args[2]
             self.assertEqual(account["imap_security"], 2)
             self.assertEqual(account["password"], "bridge-secret")
-            request.side_effect = [{"success": True}, {}, {"id": 9}]
+            request.side_effect = [{}, {"success": True}, {}, {"id": 9}]
             self.paperless.apply()
             self.assertEqual(self.settings.value["rule_id"], 9)
-            request.side_effect = [{"success": True}, {}, {}]
+            request.side_effect = [{}, {"success": True}, {}, {}]
             self.paperless.apply()
             self.assertEqual(request.call_args.args[:2], ("PATCH", "mail_rules/9/"))
             self.assertTrue(request.call_args.args[2]["enabled"])
@@ -172,3 +190,34 @@ class PaperlessTests(unittest.TestCase):
                 request.return_value = response
                 with self.assertRaises(ValueError):
                     self.paperless.test()
+
+    def test_invalid_api_access_stops_before_reading_bridge_password(self):
+        with patch.object(
+            self.paperless, "request", side_effect=ValueError("Invalid API token")
+        ) as request:
+            with self.assertRaisesRegex(ValueError, "Invalid API token"):
+                self.paperless.test()
+            request.assert_called_once_with("GET", "mail_accounts/?page_size=1")
+            self.bridge.credentials.assert_not_called()
+
+    def test_loopback_bridge_explains_remote_connection_after_validating_api(self):
+        with patch.object(self.paperless, "request", return_value={}) as request:
+            for host in (
+                "localhost",
+                "LOCALHOST.",
+                "mail.localhost",
+                "127.0.0.1",
+                "::1",
+                "0.0.0.0",
+            ):
+                request.reset_mock()
+                self.settings.value["host"] = host
+                with (
+                    self.subTest(host=host),
+                    self.assertRaisesRegex(ValueError, "API access succeeded"),
+                ):
+                    self.paperless.test()
+                request.assert_called_once_with("GET", "mail_accounts/?page_size=1")
+            self.settings.value["host"] = "192.168.1.20"
+            request.side_effect = [{}, {"success": True}]
+            self.paperless.test()

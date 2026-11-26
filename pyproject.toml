@@ -13,7 +13,7 @@ files = ["bridge_container"]
 exclude = ["bridge_container/generated"]
 
 [[tool.mypy.overrides]]
-module = ["grpc", "grpc.*", "google.protobuf.*", "waitress", "bridge_container.generated.*"]
+module = ["grpc", "grpc.*", "google.protobuf.*", "waitress", "imapclient", "bridge_container.generated.*"]
 ignore_missing_imports = true
 follow_imports = "skip"
 

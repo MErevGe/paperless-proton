@@ -55,6 +55,15 @@ def browser_checks(origin: str, password: str) -> None:
             "login": {"step": "idle"},
         }
         page.route("**/api/state", lambda route: route.fulfill(json=fixture))
+        folder_fixture = {
+            "folders": [
+                "INBOX",
+                "Folders/Paperless",
+                "Folders/Processed",
+                "Folders/Überweisungen & Belege",
+            ]
+        }
+        page.route("**/api/proton/folders", lambda route: route.fulfill(json=folder_fixture))
         page.route(
             "**/api/proton/credentials",
             lambda route: route.fulfill(
@@ -131,9 +140,95 @@ def browser_checks(origin: str, password: str) -> None:
         page.get_by_label("Paperless URL").fill("https://paperless.example.test")
         page.get_by_label("API token", exact=True).fill("test-paperless-api-token-value")
         page.get_by_label("Proton email address").select_option(label="mail@example.test")
+        expect(page.locator("#folder-status")).to_contain_text("4 folders loaded")
+        page.get_by_label("Source folder", exact=True).select_option("Folders/Paperless")
+        page.get_by_label("Move processed email to", exact=True).select_option("Folders/Processed")
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
+        expect(page.get_by_label("Source folder", exact=True)).to_have_value("Folders/Paperless")
+        page.route(
+            "**/api/paperless/save",
+            lambda route: route.fulfill(status=400, json={"error": "Settings could not be saved"}),
+        )
+        page.get_by_role("button", name="Save settings", exact=True).click()
+        expect(page.locator("#notice")).to_have_text("Settings could not be saved")
+        expect(page.get_by_label("API token", exact=True)).to_have_value(
+            "test-paperless-api-token-value"
+        )
+        page.unroute("**/api/paperless/save")
+        fixture["paperless_token_saved"] = True
         page.get_by_role("button", name="Save settings", exact=True).click()
         expect(page.locator("#notice")).to_have_text("Paperless settings saved.")
         expect(page.get_by_label("API token", exact=True)).to_have_value("")
+        expect(page.locator("#token-status")).to_contain_text("API token saved securely")
+        saved_state = context.request.get(origin + "/api/state").json()
+        assert saved_state["paperless_token_saved"] is True
+        assert "test-paperless-api-token-value" not in json.dumps(saved_state)
+        fixture["settings"] = saved_state["settings"]
+        fixture["accounts"].append(
+            {
+                "id": "second-account",
+                "username": "Second account",
+                "addresses": ["second@example.test"],
+                "connected": True,
+                "split": False,
+            }
+        )
+        expect(page.locator("#proton-address option")).to_have_count(3, timeout=10000)
+        pending = []
+
+        def delayed_folders(route):
+            if route.request.post_data_json["id"] == "test-account":
+                pending.append(route)
+            else:
+                route.fulfill(json={"folders": ["INBOX", "Folders/Second"]})
+
+        page.route("**/api/proton/folders", delayed_folders)
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
+        expect(page.get_by_label("Source folder", exact=True)).to_be_disabled()
+        page.get_by_label("Proton email address").select_option(label="second@example.test")
+        expect(page.locator("#folder-status")).to_contain_text("2 folders loaded")
+        assert len(pending) == 1
+        pending[0].fulfill(json={"folders": ["STALE FOLDER"]})
+        expect(page.get_by_role("button", name="Refresh folders", exact=True)).to_be_enabled()
+        expect(page.locator("#source-folder option")).to_have_text(
+            ["Choose a folder", "INBOX", "Folders/Second"]
+        )
+        page.unroute("**/api/proton/folders")
+        page.route("**/api/proton/folders", lambda route: route.fulfill(json=folder_fixture))
+        page.get_by_label("Proton email address").select_option(label="mail@example.test")
+        expect(page.locator("#folder-status")).to_contain_text("4 folders loaded")
+        page.get_by_label("Source folder", exact=True).select_option(
+            "Folders/Überweisungen & Belege"
+        )
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
+        expect(page.get_by_label("Source folder", exact=True)).to_have_value(
+            "Folders/Überweisungen & Belege"
+        )
+        folder_fixture["folders"].remove("Folders/Überweisungen & Belege")
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
+        expect(page.locator("#folder-status")).to_contain_text("no longer exists")
+        expect(page.get_by_label("Source folder", exact=True)).to_have_value("")
+        page.get_by_role("button", name="Test connection").click()
+        page.route(
+            "**/api/proton/folders",
+            lambda route: route.fulfill(
+                status=400, json={"error": "Folder connection unavailable"}
+            ),
+        )
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
+        expect(page.locator("#folder-status")).to_have_text("Folder connection unavailable")
+        page.get_by_role("button", name="Save settings", exact=True).click()
+        expect(page.locator("#notice")).to_contain_text("Load the Proton folders")
+        page.unroute("**/api/proton/folders")
+        page.route("**/api/proton/folders", lambda route: route.fulfill(json={"folders": []}))
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
+        expect(page.locator("#folder-status")).to_contain_text("No selectable folders")
+        page.unroute("**/api/proton/folders")
+        page.route("**/api/proton/folders", lambda route: route.fulfill(json=folder_fixture))
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
+        expect(page.locator("#folder-status")).to_contain_text("3 folders loaded")
+        page.get_by_label("Source folder", exact=True).select_option("Folders/Paperless")
+        page.get_by_label("Move processed email to", exact=True).select_option("Folders/Processed")
         page.route(
             "**/api/paperless/test",
             lambda route: route.fulfill(json={"message": "Test connection successful."}),
