@@ -66,7 +66,11 @@ def browser_checks(origin: str, password: str) -> None:
         profile_status = {}
 
         def current_state(route):
-            saved = context.request.get(origin + "/api/state").json()
+            response = context.request.get(origin + "/api/state")
+            if response.status != 200:
+                route.fulfill(response=response)
+                return
+            saved = response.json()
             fixture["profiles"] = {
                 key: value | profile_status.get(key, {}) for key, value in saved["profiles"].items()
             }
@@ -348,6 +352,7 @@ def browser_checks(origin: str, password: str) -> None:
         page.get_by_label("New password", exact=True).fill(password + "-changed")
         page.get_by_role("button", name="Change password", exact=True).click()
         expect(page.locator("#gate")).to_be_visible()
+        assert page.evaluate("fetch('/api/state').then(response => response.status)") == 401
         expect(page.locator("#gate-theme")).to_have_value("dark")
         page.get_by_label("Admin password", exact=True).fill(password + "-changed")
         page.get_by_role("button", name="Sign in", exact=True).click()
