@@ -1,3 +1,4 @@
+import hashlib
 import imaplib
 import json
 import socket
@@ -119,8 +120,15 @@ def smoke(image: str, run_browser: bool = False) -> None:
         assert docker("exec", name, "cat", "/data/tls/ca.crt").stdout == exported
         assert docker("exec", name, "pass", "show", "smoke-test").stdout == "roundtrip-test-value\n"
         if run_browser:
-            persisted = docker("exec", name, "pass", "show", "paperless-proton/api-token").stdout
-            assert persisted == "test-paperless-api-token-value\n"
+            for identifier, token in (
+                ("test-account", "test-paperless-api-token-value"),
+                ("second-account", "second-paperless-api-token-value"),
+            ):
+                digest = hashlib.sha256(identifier.encode()).hexdigest()
+                persisted = docker(
+                    "exec", name, "pass", "show", f"paperless-proton/profiles/{digest}/api-token"
+                ).stdout
+                assert persisted == token + "\n"
         docker("stop", "--time", "20", name)
         configured = docker(
             "run",

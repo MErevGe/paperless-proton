@@ -357,163 +357,189 @@ volumes:
             <div class="page-heading">
               <div>
                 <span class="eyebrow">STEP 03</span>
-                <h1>Connect your archive</h1>
+                <h1>Your import profiles</h1>
                 <p>
-                  Test from Paperless, then create or update its email account
-                  and import rule.
+                  Give each Proton account its own Paperless user, API token and
+                  folders.
                 </p>
               </div>
             </div>
+            <section class="card profile-picker">
+              <label for="profile-account">Proton account</label>
+              <select id="profile-account">
+                <option value="">Connect a Proton account first</option>
+              </select>
+              <p id="profile-status" class="hint" role="status"></p>
+            </section>
             <form id="paperless-form">
-              <div class="two-column">
-                <section class="card">
-                  <h2>Paperless connection</h2>
-                  <label for="paperless-url">Paperless URL</label
-                  ><input
-                    id="paperless-url"
-                    name="paperless_url"
-                    type="url"
-                    placeholder="https://paperless.example.internal"
-                    required
-                    maxlength="512"
-                  /><label for="paperless-token">API token</label
-                  ><input
-                    id="paperless-token"
-                    name="token"
-                    type="password"
-                    autocomplete="off"
-                    maxlength="256"
-                  />
-                  <p id="token-status" class="hint" role="status">
-                    No API token saved.
-                  </p>
-                  <p class="hint">
-                    Copy the token from your Paperless user profile. It needs
-                    permission to view, add and change mail accounts and mail
-                    rules. The field clears after a successful save. Leave it
-                    blank to keep the saved token.
-                  </p>
-                  <label for="proton-address">Proton email address</label
-                  ><select id="proton-address" required>
-                    <option value="">
-                      Connect a Proton account first
-                    </option></select
-                  ><label for="account-name">Email account name</label
-                  ><input
-                    id="account-name"
-                    name="account_name"
-                    required
-                    maxlength="256"
-                  />
-                  <details>
-                    <summary>Connection options</summary>
-                    <label class="checkbox"
-                      ><input
-                        type="checkbox"
-                        name="allow_http"
-                        id="allow-http"
-                      /><span
-                        >Allow unencrypted HTTP on a trusted LAN or VPN</span
-                      ></label
+              <fieldset id="profile-fields">
+                <div class="two-column">
+                  <section class="card">
+                    <h2>Paperless connection</h2>
+                    <label for="paperless-url">Paperless URL</label
+                    ><input
+                      id="paperless-url"
+                      name="paperless_url"
+                      type="url"
+                      placeholder="https://paperless.example.internal"
+                      required
+                      maxlength="512"
+                    /><label for="paperless-token">API token</label
+                    ><input
+                      id="paperless-token"
+                      name="token"
+                      type="password"
+                      autocomplete="off"
+                      maxlength="256"
+                    />
+                    <p id="token-status" class="hint" role="status">
+                      No API token saved.
+                    </p>
+                    <p class="hint">
+                      Use the token of the Paperless user who should own these
+                      documents. That user needs permission to view, add and
+                      change mail accounts and mail rules. The field clears
+                      after a successful save. Leave it blank to keep this
+                      profile's saved token.
+                    </p>
+                    <p id="paperless-user" class="callout" role="status"></p>
+                    <p class="hint">
+                      Paperless superusers can access all documents. Existing
+                      Paperless workflows and sharing rules can also grant
+                      access.
+                    </p>
+                    <label for="proton-address">Proton email address</label
+                    ><select id="proton-address" required>
+                      <option value="">
+                        Connect a Proton account first
+                      </option></select
+                    ><label for="account-name">Email account name</label
+                    ><input
+                      id="account-name"
+                      name="account_name"
+                      required
+                      maxlength="256"
+                    />
+                    <details>
+                      <summary>Connection options</summary>
+                      <label class="checkbox"
+                        ><input
+                          type="checkbox"
+                          name="allow_http"
+                          id="allow-http"
+                        /><span
+                          >Allow unencrypted HTTP on a trusted LAN or VPN</span
+                        ></label
+                      >
+                      <p class="hint">
+                        HTTP exposes the API token and Bridge password on the
+                        network. Prefer HTTPS.
+                      </p>
+                      <label for="paperless-ca"
+                        >Paperless CA certificate (optional)</label
+                      ><textarea
+                        id="paperless-ca"
+                        name="paperless_ca"
+                        rows="5"
+                        placeholder="-----BEGIN CERTIFICATE-----"
+                        maxlength="32768"
+                      ></textarea>
+                      <p class="hint">
+                        Only needed if Paperless uses a private certificate
+                        authority. Server verification stays enabled.
+                      </p>
+                    </details>
+                  </section>
+                  <section class="card">
+                    <h2>Import rule</h2>
+                    <p>
+                      Create the source and destination folders in Proton Mail
+                      first.
+                    </p>
+                    <label for="rule-name">Rule name</label
+                    ><input
+                      id="rule-name"
+                      name="rule_name"
+                      required
+                      maxlength="256"
+                    /><label for="source-folder">Source folder</label
+                    ><select id="source-folder" name="folder" required disabled>
+                      <option value="">
+                        Choose a connected email address first
+                      </option></select
+                    ><label for="destination-folder"
+                      >Move processed email to</label
+                    ><select
+                      id="destination-folder"
+                      name="destination"
+                      required
+                      disabled
                     >
-                    <p class="hint">
-                      HTTP exposes the API token and Bridge password on the
-                      network. Prefer HTTPS.
+                      <option value="">
+                        Choose a connected email address first
+                      </option>
+                    </select>
+                    <p id="folder-status" class="hint" role="status">
+                      Choose a connected email address to load its folders.
                     </p>
-                    <label for="paperless-ca"
-                      >Paperless CA certificate (optional)</label
-                    ><textarea
-                      id="paperless-ca"
-                      name="paperless_ca"
-                      rows="5"
-                      placeholder="-----BEGIN CERTIFICATE-----"
-                      maxlength="32768"
-                    ></textarea>
-                    <p class="hint">
-                      Only needed if Paperless uses a private certificate
-                      authority. Server verification stays enabled.
+                    <button
+                      id="refresh-folders"
+                      type="button"
+                      class="secondary"
+                    >
+                      Refresh folders
+                    </button>
+                    <label for="attachment-filter"
+                      >Attachment filename filter</label
+                    ><input
+                      id="attachment-filter"
+                      name="attachment_filter"
+                      required
+                      maxlength="256"
+                    /><label for="maximum-age">Maximum email age (days)</label
+                    ><input
+                      id="maximum-age"
+                      name="maximum_age"
+                      type="number"
+                      min="0"
+                      max="32767"
+                      aria-describedby="maximum-age-help"
+                      required
+                    />
+                    <p id="maximum-age-help" class="hint">
+                      Use 0 to 32767 days. Set 0 to include email of any age.
+                      Moving an old email into the source folder does not make
+                      it newer.
                     </p>
-                  </details>
-                </section>
-                <section class="card">
-                  <h2>Import rule</h2>
-                  <p>
-                    Create the source and destination folders in Proton Mail
-                    first.
-                  </p>
-                  <label for="rule-name">Rule name</label
-                  ><input
-                    id="rule-name"
-                    name="rule_name"
-                    required
-                    maxlength="256"
-                  /><label for="source-folder">Source folder</label
-                  ><select id="source-folder" name="folder" required disabled>
-                    <option value="">
-                      Choose a connected email address first
-                    </option></select
-                  ><label for="destination-folder"
-                    >Move processed email to</label
-                  ><select
-                    id="destination-folder"
-                    name="destination"
-                    required
-                    disabled
-                  >
-                    <option value="">
-                      Choose a connected email address first
-                    </option>
-                  </select>
-                  <p id="folder-status" class="hint" role="status">
-                    Choose a connected email address to load its folders.
-                  </p>
-                  <button id="refresh-folders" type="button" class="secondary">
-                    Refresh folders
-                  </button>
-                  <label for="attachment-filter"
-                    >Attachment filename filter</label
-                  ><input
-                    id="attachment-filter"
-                    name="attachment_filter"
-                    required
-                    maxlength="256"
-                  /><label for="maximum-age">Maximum email age (days)</label
-                  ><input
-                    id="maximum-age"
-                    name="maximum_age"
-                    type="number"
-                    min="0"
-                    max="32767"
-                    aria-describedby="maximum-age-help"
-                    required
-                  />
-                  <p id="maximum-age-help" class="hint">
-                    Use 0 to 32767 days. Set 0 to include email of any age.
-                    Moving an old email into the source folder does not make it
-                    newer.
-                  </p>
-                  <p class="hint">
-                    Paperless imports matching attachments and moves the
-                    processed email. The rule is enabled when you apply it.
-                  </p>
-                </section>
-              </div>
-              <div class="card action-bar">
-                <div>
-                  <strong>Ready to connect?</strong>
-                  <p>
-                    Install the Bridge certificate in Paperless before testing.
-                  </p>
+                    <p class="hint">
+                      Paperless imports matching attachments and moves the
+                      processed email. The rule is enabled when you apply it.
+                    </p>
+                  </section>
                 </div>
-                <div class="actions">
-                  <button class="secondary" type="submit">Save settings</button
-                  ><button class="secondary" type="button" id="test-paperless">
-                    Test connection</button
-                  ><button class="primary" type="button" id="apply-paperless">
-                    Apply to Paperless ↗
-                  </button>
+                <div class="card action-bar">
+                  <div>
+                    <strong>Ready to connect?</strong>
+                    <p>
+                      Install the Bridge certificate in Paperless before
+                      testing.
+                    </p>
+                  </div>
+                  <div class="actions">
+                    <button class="secondary" type="submit">
+                      Save settings</button
+                    ><button
+                      class="secondary"
+                      type="button"
+                      id="test-paperless"
+                    >
+                      Test connection</button
+                    ><button class="primary" type="button" id="apply-paperless">
+                      Apply to Paperless ↗
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </fieldset>
             </form>
             <p id="paperless-result" class="callout" role="status" hidden></p>
           </section>

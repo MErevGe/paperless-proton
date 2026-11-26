@@ -62,7 +62,17 @@ def browser_checks(origin: str, password: str) -> None:
             ],
             "login": {"step": "idle"},
         }
-        page.route("**/api/state", lambda route: route.fulfill(json=fixture))
+
+        profile_status = {}
+
+        def current_state(route):
+            saved = context.request.get(origin + "/api/state").json()
+            fixture["profiles"] = {
+                key: value | profile_status.get(key, {}) for key, value in saved["profiles"].items()
+            }
+            route.fulfill(json=fixture)
+
+        page.route("**/api/state", current_state)
         folder_fixture = {
             "folders": [
                 "INBOX",
@@ -101,7 +111,9 @@ def browser_checks(origin: str, password: str) -> None:
             lambda route: (fixture.update(accounts=[]), route.fulfill(json={})),
         )
         page.get_by_role("link", name="Proton account", exact=False).click()
-        expect(page.get_by_text("Example account", exact=True)).to_be_visible(timeout=10000)
+        expect(page.locator("#accounts").get_by_text("Example account", exact=True)).to_be_visible(
+            timeout=10000
+        )
         page.get_by_role("button", name="View Bridge credentials").click()
         expect(page.locator("#bridge-password")).to_have_value("test-bridge-password")
         page.get_by_role("button", name="Show password").click()
@@ -142,7 +154,9 @@ def browser_checks(origin: str, password: str) -> None:
                 "split": False,
             }
         )
-        expect(page.get_by_text("Disconnected account", exact=True)).to_be_visible(timeout=10000)
+        expect(
+            page.locator("#accounts").get_by_text("Disconnected account", exact=True)
+        ).to_be_visible(timeout=10000)
         fixture["accounts"] = original_accounts
         page.get_by_role("link", name="Paperless setup", exact=False).click()
         page.get_by_label("Paperless URL").fill("https://paperless.example.test")
@@ -155,15 +169,12 @@ def browser_checks(origin: str, password: str) -> None:
         expect(page.get_by_label("Source folder", exact=True)).to_have_value("Folders/Paperless")
         age = page.get_by_label("Maximum email age (days)", exact=True)
         expect(page.locator("#maximum-age-help")).to_contain_text("0 to 32767")
-        saved_before = context.request.get(origin + "/api/state").json()["settings"]["maximum_age"]
+        saved_before = context.request.get(origin + "/api/state").json()["profiles"]
         for value in ("36500", "32768", "-1", "90.5"):
             age.fill(value)
             page.get_by_role("button", name="Save settings", exact=True).click()
             assert age.evaluate("input => !input.validity.valid")
-            assert (
-                context.request.get(origin + "/api/state").json()["settings"]["maximum_age"]
-                == saved_before
-            )
+            assert context.request.get(origin + "/api/state").json()["profiles"] == saved_before
         for value in ("0", "32767", "90"):
             age.fill(value)
             assert age.evaluate("input => input.validity.valid")
@@ -178,14 +189,13 @@ def browser_checks(origin: str, password: str) -> None:
             "test-paperless-api-token-value"
         )
         page.unroute("**/api/paperless/save")
-        fixture["paperless_token_saved"] = True
         page.get_by_role("button", name="Save settings", exact=True).click()
-        expect(page.locator("#notice")).to_have_text("Paperless settings saved.")
+        expect(page.locator("#notice")).to_have_text("Import profile saved.")
         expect(page.get_by_label("API token", exact=True)).to_have_value("")
         expect(page.locator("#token-status")).to_contain_text("API token saved securely")
         saved_state = context.request.get(origin + "/api/state").json()
-        assert saved_state["paperless_token_saved"] is True
-        assert saved_state["settings"]["maximum_age"] == 0
+        assert saved_state["profiles"]["test-account"]["token_saved"] is True
+        assert saved_state["profiles"]["test-account"]["maximum_age"] == 0
         assert "test-paperless-api-token-value" not in json.dumps(saved_state)
         fixture["settings"] = saved_state["settings"]
         fixture["accounts"].append(
@@ -197,7 +207,7 @@ def browser_checks(origin: str, password: str) -> None:
                 "split": False,
             }
         )
-        expect(page.locator("#proton-address option")).to_have_count(3, timeout=10000)
+        expect(page.locator("#profile-account option")).to_have_count(3, timeout=10000)
         pending = []
 
         def delayed_folders(route):
@@ -209,7 +219,7 @@ def browser_checks(origin: str, password: str) -> None:
         page.route("**/api/proton/folders", delayed_folders)
         page.get_by_role("button", name="Refresh folders", exact=True).click()
         expect(page.get_by_label("Source folder", exact=True)).to_be_disabled()
-        page.get_by_label("Proton email address").select_option(label="second@example.test")
+        page.get_by_label("Proton account", exact=True).select_option("second-account")
         expect(page.locator("#folder-status")).to_contain_text("2 folders loaded")
         assert len(pending) == 1
         pending[0].fulfill(json={"folders": ["STALE FOLDER"]})
@@ -217,9 +227,38 @@ def browser_checks(origin: str, password: str) -> None:
         expect(page.locator("#source-folder option")).to_have_text(
             ["Choose a folder", "INBOX", "Folders/Second"]
         )
+        expect(page.get_by_label("Paperless URL")).to_have_value("")
+        expect(page.get_by_label("API token", exact=True)).to_have_value("")
+        expect(page.locator("#token-status")).to_contain_text("No API token saved")
+        page.get_by_label("Paperless URL").fill("https://second-archive.example.test")
+        page.get_by_label("API token", exact=True).fill("second-paperless-api-token-value")
+        page.get_by_label("Source folder", exact=True).select_option("INBOX")
+        page.get_by_label("Move processed email to", exact=True).select_option("Folders/Second")
+        page.get_by_label("Maximum email age (days)", exact=True).fill("90")
+        page.get_by_label("Proton account", exact=True).select_option("test-account")
+        page.get_by_role("dialog").get_by_role("button", name="Cancel").click()
+        expect(page.get_by_label("Proton account", exact=True)).to_have_value("second-account")
+        expect(page.get_by_label("API token", exact=True)).to_have_value(
+            "second-paperless-api-token-value"
+        )
+        page.get_by_role("button", name="Save settings", exact=True).click()
+        expect(page.get_by_label("API token", exact=True)).to_have_value("")
+        expect(page.locator("#token-status")).to_contain_text("API token saved securely")
+        two_profiles = context.request.get(origin + "/api/state").json()["profiles"]
+        assert two_profiles["test-account"] == saved_state["profiles"]["test-account"]
+        assert two_profiles["second-account"]["folder"] == "INBOX"
+        assert two_profiles["second-account"]["destination"] == "Folders/Second"
+        assert two_profiles["second-account"]["maximum_age"] == 90
+        assert two_profiles["second-account"]["token_saved"] is True
+        page.get_by_label("API token", exact=True).fill("unsaved-token-to-discard")
+        page.get_by_label("Proton account", exact=True).select_option("test-account")
+        page.get_by_role("dialog").get_by_role("button", name="Continue").click()
+        expect(page.get_by_label("API token", exact=True)).to_have_value("")
+        expect(page.get_by_label("Paperless URL")).to_have_value("https://paperless.example.test")
+        expect(age).to_have_value("0")
         page.unroute("**/api/proton/folders")
         page.route("**/api/proton/folders", lambda route: route.fulfill(json=folder_fixture))
-        page.get_by_label("Proton email address").select_option(label="mail@example.test")
+        page.get_by_role("button", name="Refresh folders", exact=True).click()
         expect(page.locator("#folder-status")).to_contain_text("4 folders loaded")
         page.get_by_label("Source folder", exact=True).select_option(
             "Folders/Überweisungen & Belege"
@@ -253,10 +292,8 @@ def browser_checks(origin: str, password: str) -> None:
         expect(page.locator("#folder-status")).to_contain_text("3 folders loaded")
         page.get_by_label("Source folder", exact=True).select_option("Folders/Paperless")
         page.get_by_label("Move processed email to", exact=True).select_option("Folders/Processed")
-        page.route(
-            "**/api/paperless/test",
-            lambda route: route.fulfill(json={"message": "Test connection successful."}),
-        )
+        pending_test = []
+        page.route("**/api/paperless/test", lambda route: pending_test.append(route))
         page.route(
             "**/api/paperless/apply",
             lambda route: route.fulfill(
@@ -264,7 +301,19 @@ def browser_checks(origin: str, password: str) -> None:
             ),
         )
         page.get_by_role("button", name="Test connection").click()
+        expect(page.locator("#paperless-result")).to_have_text("Connecting to Paperless…")
+        expect(page.get_by_label("Proton account", exact=True)).to_be_disabled()
+        expect(page.get_by_label("API token", exact=True)).to_be_disabled()
+        expect(page.get_by_role("button", name="Test connection")).to_be_disabled()
+        assert pending_test
+        assert pending_test[0].request.post_data_json == {"proton_id": "test-account"}
+        profile_status["test-account"] = {
+            "paperless_user": {"id": 3, "username": "archive-user", "is_superuser": False}
+        }
+        pending_test[0].fulfill(json={"message": "Test connection successful."})
         expect(page.locator("#paperless-result")).to_have_text("Test connection successful.")
+        expect(page.locator("#paperless-user")).to_have_text("Document owner: archive-user.")
+        expect(page.get_by_label("Proton account", exact=True)).to_be_enabled()
         page.get_by_role("button", name="Apply to Paperless", exact=False).click()
         page.get_by_role("dialog").get_by_role("button", name="Cancel").click()
         page.get_by_role("button", name="Apply to Paperless", exact=False).click()
@@ -282,7 +331,6 @@ def browser_checks(origin: str, password: str) -> None:
         expect(page.locator("#paperless-result")).to_have_text(
             "Paperless certificate is not trusted"
         )
-        fixture["settings"]["rule_id"] = 1
         fixture["ready"] = False
         expect(page.locator("#service-badge")).to_have_text("Bridge starting", timeout=10000)
         fixture["ready"] = True
@@ -312,6 +360,8 @@ def browser_checks(origin: str, password: str) -> None:
                 json={"configured": False, "authenticated": False, "csrf": ""}
             ),
         )
+        page.unroute("**/api/state")
+        page.route("**/api/state", lambda route: route.fulfill(json=fixture))
         page.route("**/api/setup", lambda route: route.fulfill(json={"csrf": "test-csrf"}))
         coverage = theme_coverage + cdp.send("Profiler.takePreciseCoverage")["result"]
         page.reload()

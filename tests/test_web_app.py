@@ -149,8 +149,8 @@ class WebTests(unittest.TestCase):
         with patch.object(self.app, "paperless") as paperless:
             for path in ("paperless/save", "paperless/test", "paperless/apply"):
                 self.assertEqual(self.request("/api/" + path, {})[0], 200)
-            paperless.test.assert_called_once()
-            paperless.apply.assert_called_once()
+            paperless.return_value.test.assert_called_once()
+            paperless.return_value.apply.assert_called_once()
         for error, status in (
             (RuntimeError("sensitive"), 503),
             (OSError("private"), 503),
@@ -176,3 +176,28 @@ class WebTests(unittest.TestCase):
             self.assertEqual(thread.return_value.join.call_count, 2)
             bridge.return_value.channel = None
             run_web(self.data)
+
+    def test_profile_routes_require_explicit_identity_and_keep_state_token_free(self):
+        self.authenticate()
+        for path in ("save", "test", "apply"):
+            for identifier in (None, "", [], "x" * 257):
+                with self.subTest(path=path, identifier=identifier):
+                    self.assertEqual(
+                        self.request("/api/paperless/" + path, {"proton_id": identifier})[0], 400
+                    )
+        with patch("bridge_container.web_app.Paperless") as client:
+            self.request("/api/paperless/test", {"proton_id": "one"})
+            self.assertEqual(client.call_args.args[0].proton_id, "one")
+            self.request("/api/paperless/apply", {"proton_id": "two"})
+            self.assertEqual(client.call_args.args[0].proton_id, "two")
+        for identifier in ("one", "two"):
+            profile = self.app.profiles.get(identifier)
+            profile.save({"address": identifier + "@example.test", "token": "must-not-appear"})
+            profile.token_path.parent.mkdir(parents=True, exist_ok=True)
+            profile.token_path.write_bytes(b"encrypted secret")
+        state = self.request("/api/state")[1]
+        self.assertEqual(set(state["profiles"]), {"one", "two"})
+        self.assertTrue(state["profiles"]["one"]["token_saved"])
+        self.assertNotIn("secret", json.dumps(state))
+        self.assertNotIn("must-not-appear", json.dumps(state))
+        self.assertEqual(set(state["settings"]), {"host", "port"})

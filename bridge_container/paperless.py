@@ -1,18 +1,17 @@
 import http.client
 import ipaddress
 import json
-import os
 import re
 import socket
 import ssl
 import subprocess
-from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 from bridge_container.bridge_api import BridgeAPI
+from bridge_container.import_profiles import ImportProfile
 from bridge_container.paperless_errors import MAXIMUM_AGE_HELP, MAXIMUM_AGE_LIMIT, PaperlessError
-from bridge_container.settings import Settings, text_field
+from bridge_container.settings import text_field
 
 
 def validate_maximum_age(age: Any) -> int:
@@ -61,17 +60,16 @@ def target_address(host: str, port: int) -> str:
 
 
 class Paperless:
-    def __init__(self, settings: Settings, bridge: BridgeAPI):
+    def __init__(self, settings: ImportProfile, bridge: BridgeAPI):
         self.settings = settings
         self.bridge = bridge
 
     def token_saved(self) -> bool:
-        store = Path(os.environ.get("PASSWORD_STORE_DIR", self.settings.data / "password-store"))
-        return (store / "paperless-proton/api-token.gpg").is_file()
+        return self.settings.token_path.is_file()
 
     def token(self) -> str:
         result = subprocess.run(
-            ["pass", "show", "paperless-proton/api-token"],
+            ["pass", "show", self.settings.token_key],
             check=True,
             capture_output=True,
             text=True,
@@ -101,7 +99,6 @@ class Paperless:
             "folder",
             "destination",
             "attachment_filter",
-            "proton_id",
             "address",
         ):
             changes[name] = text_field(payload.get(name), name.replace("_", " "))
@@ -113,7 +110,7 @@ class Paperless:
             if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,256}", token):
                 raise ValueError("Invalid Paperless API token")
             subprocess.run(
-                ["pass", "insert", "--multiline", "--force", "paperless-proton/api-token"],
+                ["pass", "insert", "--multiline", "--force", self.settings.token_key],
                 input=token + "\n",
                 text=True,
                 capture_output=True,
@@ -124,7 +121,9 @@ class Paperless:
         else:
             self.token()
         if url != self.settings.value["paperless_url"]:
-            changes.update(account_id=None, rule_id=None)
+            changes.update(account_id=None, rule_id=None, linked_user_id=None)
+        if token or any(self.settings.value[key] != value for key, value in changes.items()):
+            changes.update(paperless_user=None, applied=False)
         self.settings.save(changes)
 
     def request(self, method: str, endpoint: str, payload: dict[str, Any] | None = None) -> Any:
@@ -181,9 +180,30 @@ class Paperless:
             **credentials,
         }
 
-    def test(self) -> None:
+    def identity(self) -> dict[str, Any]:
+        response = self.request("GET", "ui_settings/")
+        user = response.get("user") if isinstance(response, dict) else None
+        if not isinstance(user, dict) or type(user.get("id")) is not int or user["id"] <= 0:
+            raise ValueError("Paperless did not identify the API token's user")
+        identity = {
+            "id": user["id"],
+            "username": text_field(user.get("username"), "Paperless username"),
+            "is_superuser": user.get("is_superuser") is True,
+        }
+        linked = self.settings.value["linked_user_id"]
+        if linked is not None and linked != identity["id"]:
+            raise ValueError(
+                "This profile is linked to another Paperless user. Use that user's API token "
+                "to keep the existing account and import rule private."
+            )
+        self.settings.save({"paperless_user": identity})
+        return identity
+
+    def test(self) -> dict[str, Any]:
+        identity = self.identity()
         self.request("GET", "mail_accounts/?page_size=1")
-        account_id = self.existing_id("mail_accounts", "account_id")
+        account_id = self.existing_id("mail_accounts", "account_id", identity)
+        self.existing_id("mail_rules", "rule_id", identity)
         host = self.settings.value["host"]
         try:
             address = ipaddress.ip_address(host)
@@ -204,18 +224,20 @@ class Paperless:
             raise ValueError(
                 "Paperless could not connect to Bridge. Check its certificate and network."
             )
+        return identity
 
     def apply(self) -> None:
         validate_maximum_age(self.settings.value["maximum_age"])
-        self.test()
-        rule_id = self.existing_id("mail_rules", "rule_id")
+        identity = self.test()
+        rule_id = self.settings.value["rule_id"]
         account_id = self.settings.value.get("account_id")
+        account_payload = self.account() | {"owner": identity["id"]}
         if account_id:
-            self.request("PATCH", f"mail_accounts/{int(account_id)}/", self.account())
+            self.request("PATCH", f"mail_accounts/{int(account_id)}/", account_payload)
         else:
-            account = self.request("POST", "mail_accounts/", self.account())
+            account = self.request("POST", "mail_accounts/", account_payload)
             account_id = int(account["id"])
-            self.settings.save({"account_id": account_id})
+            self.settings.save({"account_id": account_id, "linked_user_id": identity["id"]})
         settings = self.settings.value
         rule = {
             "name": settings["rule_name"],
@@ -230,25 +252,27 @@ class Paperless:
             "consumption_scope": 1,
             "assign_title_from": 2,
             "assign_correspondent_from": 1,
+            "owner": identity["id"],
+            "assign_owner_from_rule": True,
         }
         if rule_id:
             self.request("PATCH", f"mail_rules/{int(rule_id)}/", rule)
         else:
             result = self.request("POST", "mail_rules/", rule)
             self.settings.save({"rule_id": int(result["id"])})
+        self.settings.save({"applied": True, "linked_user_id": identity["id"]})
 
-    def existing_id(self, resource: str, key: str) -> int | None:
+    def existing_id(self, resource: str, key: str, identity: dict[str, Any]) -> int | None:
         value = self.settings.value.get(key)
         if not value:
             return None
         identifier = int(value)
         try:
-            self.request("GET", f"{resource}/{identifier}/")
+            existing = self.request("GET", f"{resource}/{identifier}/")
         except PaperlessError as error:
             if error.status != 404:
                 raise
-            identity = self.request("GET", "ui_settings/")
-            if identity.get("user", {}).get("is_superuser") is not True:
+            if identity["is_superuser"] is not True:
                 raise ValueError(
                     "The saved Paperless email account or import rule is missing or inaccessible. "
                     "Check its owner and permissions in Paperless. An administrator can "
@@ -259,4 +283,16 @@ class Paperless:
                 changes["rule_id"] = None
             self.settings.save(changes)
             return None
+        if not isinstance(existing, dict) or existing.get("owner") != identity["id"]:
+            raise ValueError(
+                "The saved Paperless email account or import rule belongs to another user "
+                "or has no owner. Correct its ownership in Paperless before applying this profile."
+            )
+        if (
+            resource == "mail_rules"
+            and existing.get("account") != self.settings.value["account_id"]
+        ):
+            raise ValueError(
+                "The saved import rule is linked to another email account in Paperless"
+            )
         return identifier

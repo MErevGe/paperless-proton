@@ -58,17 +58,7 @@ class Settings:
         self.value: dict[str, Any] = {
             "host": os.environ.get("BRIDGE_HOST", "localhost"),
             "port": int(os.environ.get("BRIDGE_PORT", "1993")),
-            "paperless_url": "",
-            "paperless_ca": "",
-            "allow_http": False,
-            "account_name": "Proton Mail",
-            "rule_name": "Proton attachments",
-            "folder": "Folders/Paperless",
-            "destination": "Folders/Processed",
-            "attachment_filter": "*.pdf",
-            "maximum_age": 30,
-            "proton_id": "",
-            "address": "",
+            "profiles": {},
         }
         if self.path.exists():
             self.value.update(load_json(self.path))
@@ -78,6 +68,8 @@ class Settings:
         subject_alt_name(self.value["host"])
 
     def save(self, changes: dict[str, Any]) -> None:
-        updated = self.value | changes
-        save_json(self.path, updated)
-        self.value = updated
+        self.replace(self.value | changes)
+
+    def replace(self, value: dict[str, Any]) -> None:
+        save_json(self.path, value)
+        self.value = value
