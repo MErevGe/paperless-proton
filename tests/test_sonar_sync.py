@@ -213,6 +213,10 @@ class SynchronizationTests(unittest.TestCase):
         self.assertEqual(len(changes), 2)
         self.assertEqual(labels, LABELS.keys())
         self.assertEqual(self.fixture.writes, [])
+        hotspot_queries = [
+            query for path, query in self.fixture.reads if path == "/api/hotspots/search"
+        ]
+        self.assertEqual(hotspot_queries, [{"projectKey": PROJECT, "ps": "100", "p": "1"}])
         for path, query in self.fixture.reads:
             if path.endswith("/search"):
                 self.assertFalse(
