@@ -122,6 +122,10 @@ Open **Paperless setup** in this app:
 5. Click **Test connection**. This checks API access, then asks Paperless to connect to Bridge using SSL/TLS, including certificate verification. The Bridge address must be reachable from Paperless; `localhost` points to the Paperless container itself.
 6. Click **Apply to Paperless** and confirm. The app creates the email account and enables the import rule. Later applications update the account and rule created by this app.
 
+**Maximum email age** accepts 0 to 32767 days. Use 0 to include email of any age. Moving an old email into the source folder does not make it newer. Click **Apply to Paperless** to use a changed age limit; **Save settings** only saves your choices in this app.
+
+If you delete the linked account or rule in Paperless, use a superuser API token and click **Test connection**, then **Apply to Paperless** to recreate the setup. Recreated accounts and rules belong to the user whose API token is saved. The app only clears missing links after verifying superuser access. With a regular user, first check the existing account and rule's owner and permissions.
+
 The API token is stored in the encrypted password store. After a successful save, its field clears and **API token saved securely** appears. Leave the field empty to keep the saved token, including after a restart. If saving fails, the entered token stays in the field so you can retry. Changing the Paperless URL requires a token again. The app does not adopt unrelated existing email accounts or rules; use distinct names.
 
 If Paperless uses a private HTTPS certificate, paste its CA certificate under **Connection options**. If it only supports HTTP on your trusted LAN or VPN, explicitly enable HTTP there. HTTP sends the API token and Bridge password without transport encryption.

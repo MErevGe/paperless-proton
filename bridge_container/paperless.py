@@ -11,7 +11,14 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from bridge_container.bridge_api import BridgeAPI
+from bridge_container.paperless_errors import MAXIMUM_AGE_HELP, MAXIMUM_AGE_LIMIT, PaperlessError
 from bridge_container.settings import Settings, text_field
+
+
+def validate_maximum_age(age: Any) -> int:
+    if type(age) is not int or not 0 <= age <= MAXIMUM_AGE_LIMIT:
+        raise ValueError("Invalid maximum email age. " + MAXIMUM_AGE_HELP)
+    return age
 
 
 def validate_url(value: Any, allow_http: bool) -> str:
@@ -98,10 +105,7 @@ class Paperless:
             "address",
         ):
             changes[name] = text_field(payload.get(name), name.replace("_", " "))
-        age = payload.get("maximum_age")
-        if type(age) is not int or not 1 <= age <= 36500:
-            raise ValueError("Maximum email age must be between 1 and 36500 days")
-        changes["maximum_age"] = age
+        changes["maximum_age"] = validate_maximum_age(payload.get("maximum_age"))
         if changes["folder"] == changes["destination"]:
             raise ValueError("Source and destination folders must be different")
         token = payload.get("token", "")
@@ -152,28 +156,7 @@ class Paperless:
             if len(data) > 1048576:
                 raise ValueError("Paperless response is too large")
             if not 200 <= response.status < 300:
-                messages = {
-                    400: "Paperless rejected the request. Check the mail settings, Bridge "
-                    "certificate and PAPERLESS_EMAIL_ALLOW_INTERNAL_HOSTS in Paperless.",
-                    401: "Paperless rejected the API token.",
-                    403: "The API token needs permission to manage mail accounts and rules.",
-                    404: "Paperless API endpoint not found. Check the URL and Paperless version.",
-                    429: "Paperless is limiting requests. Wait briefly and try again.",
-                }
-                if 300 <= response.status < 400:
-                    message = (
-                        "Paperless redirected the request. Enter its final URL, including "
-                        "HTTPS and any path prefix. Redirects are not followed."
-                    )
-                elif response.status >= 500:
-                    message = (
-                        "Paperless reported a server error. Check its container logs. "
-                        "For a Bridge test, check the reachable Bridge address and the mounted "
-                        "CA file configured in PAPERLESS_EMAIL_CERTIFICATE_LOCATION."
-                    )
-                else:
-                    message = messages.get(response.status, "Paperless rejected the request.")
-                raise ValueError(f"{message} (HTTP {response.status})")
+                raise PaperlessError(response.status, endpoint, data)
             try:
                 return json.loads(data)
             except ValueError:
@@ -200,6 +183,7 @@ class Paperless:
 
     def test(self) -> None:
         self.request("GET", "mail_accounts/?page_size=1")
+        account_id = self.existing_id("mail_accounts", "account_id")
         host = self.settings.value["host"]
         try:
             address = ipaddress.ip_address(host)
@@ -213,8 +197,8 @@ class Paperless:
                 "Set BRIDGE_BIND_IP to its LAN or VPN address in .env and recreate the container."
             )
         account = self.account()
-        if self.settings.value.get("account_id"):
-            account["id"] = self.settings.value["account_id"]
+        if account_id:
+            account["id"] = account_id
         response = self.request("POST", "mail_accounts/test/", account)
         if not isinstance(response, dict) or response.get("success") is not True:
             raise ValueError(
@@ -222,7 +206,9 @@ class Paperless:
             )
 
     def apply(self) -> None:
+        validate_maximum_age(self.settings.value["maximum_age"])
         self.test()
+        rule_id = self.existing_id("mail_rules", "rule_id")
         account_id = self.settings.value.get("account_id")
         if account_id:
             self.request("PATCH", f"mail_accounts/{int(account_id)}/", self.account())
@@ -245,9 +231,32 @@ class Paperless:
             "assign_title_from": 2,
             "assign_correspondent_from": 1,
         }
-        rule_id = settings.get("rule_id")
         if rule_id:
             self.request("PATCH", f"mail_rules/{int(rule_id)}/", rule)
         else:
             result = self.request("POST", "mail_rules/", rule)
             self.settings.save({"rule_id": int(result["id"])})
+
+    def existing_id(self, resource: str, key: str) -> int | None:
+        value = self.settings.value.get(key)
+        if not value:
+            return None
+        identifier = int(value)
+        try:
+            self.request("GET", f"{resource}/{identifier}/")
+        except PaperlessError as error:
+            if error.status != 404:
+                raise
+            identity = self.request("GET", "ui_settings/")
+            if identity.get("user", {}).get("is_superuser") is not True:
+                raise ValueError(
+                    "The saved Paperless email account or import rule is missing or inaccessible. "
+                    "Check its owner and permissions in Paperless. An administrator can "
+                    "reconnect this setup if the account or rule was deleted."
+                ) from None
+            changes = {key: None}
+            if key == "account_id":
+                changes["rule_id"] = None
+            self.settings.save(changes)
+            return None
+        return identifier

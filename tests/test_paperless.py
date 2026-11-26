@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from bridge_container.paperless import Paperless, target_address, validate_url
+from bridge_container.paperless_errors import PaperlessError
 from bridge_container.settings import Settings
 
 
@@ -94,9 +95,14 @@ class PaperlessTests(unittest.TestCase):
             ("paperless_ca", 123),
             ("paperless_ca", "x" * 32769),
             ("paperless_ca", "-----BEGIN PRIVATE KEY-----"),
-            ("maximum_age", 0),
+            ("maximum_age", -1),
             ("maximum_age", True),
+            ("maximum_age", 32768),
+            ("maximum_age", 36500),
             ("maximum_age", 36501),
+            ("maximum_age", 90.5),
+            ("maximum_age", "90"),
+            ("maximum_age", None),
             ("token", "not a token"),
             ("token", 123),
             ("destination", "Folders/Paperless"),
@@ -178,10 +184,10 @@ class PaperlessTests(unittest.TestCase):
             account = request.call_args_list[2].args[2]
             self.assertEqual(account["imap_security"], 2)
             self.assertEqual(account["password"], "bridge-secret")
-            request.side_effect = [{}, {"success": True}, {}, {"id": 9}]
+            request.side_effect = [{}, {"id": 7}, {"success": True}, {}, {"id": 9}]
             self.paperless.apply()
             self.assertEqual(self.settings.value["rule_id"], 9)
-            request.side_effect = [{}, {"success": True}, {}, {}]
+            request.side_effect = [{}, {"id": 7}, {"success": True}, {"id": 9}, {}, {}]
             self.paperless.apply()
             self.assertEqual(request.call_args.args[:2], ("PATCH", "mail_rules/9/"))
             self.assertTrue(request.call_args.args[2]["enabled"])
@@ -221,3 +227,85 @@ class PaperlessTests(unittest.TestCase):
             self.settings.value["host"] = "192.168.1.20"
             request.side_effect = [{}, {"success": True}]
             self.paperless.test()
+
+    @patch("bridge_container.paperless.subprocess.run")
+    def test_maximum_age_boundaries_are_saved_without_conversion(self, _run):
+        for age in (0, 1, 90, 32767):
+            with self.subTest(age=age):
+                self.paperless.save(self.payload | {"maximum_age": age})
+                self.assertEqual(self.settings.value["maximum_age"], age)
+
+    def test_invalid_saved_age_stops_apply_before_any_paperless_request(self):
+        self.settings.value["maximum_age"] = 36500
+        with patch.object(self.paperless, "request") as request:
+            with self.assertRaisesRegex(ValueError, "0 to 32767"):
+                self.paperless.apply()
+            request.assert_not_called()
+
+    def test_superuser_recovers_deleted_account_without_creating_during_test(self):
+        self.settings.value.update(
+            self.payload | {"host": "bridge.test", "account_id": 7, "rule_id": 9}
+        )
+        with patch.object(self.paperless, "request") as request:
+            request.side_effect = [
+                {},
+                PaperlessError(404, "mail_accounts/7/", b""),
+                {"user": {"is_superuser": True}},
+                {"success": True},
+            ]
+            self.paperless.test()
+            self.assertIsNone(self.settings.value["account_id"])
+            self.assertIsNone(self.settings.value["rule_id"])
+            self.assertEqual(request.call_args.args[:2], ("POST", "mail_accounts/test/"))
+            self.assertNotIn("id", request.call_args.args[2])
+            self.assertEqual(request.call_count, 4)
+            request.side_effect = [{}, {"success": True}, {"id": 8}, {"id": 10}]
+            self.paperless.apply()
+            self.assertEqual(self.settings.value["account_id"], 8)
+            self.assertEqual(self.settings.value["rule_id"], 10)
+            self.assertNotIn("owner", request.call_args.args[2])
+            self.assertNotIn("set_permissions", request.call_args.args[2])
+
+    def test_superuser_recovers_deleted_rule_without_duplicating_account(self):
+        self.settings.value.update(
+            self.payload | {"host": "bridge.test", "account_id": 7, "rule_id": 9}
+        )
+        with patch.object(self.paperless, "request") as request:
+            request.side_effect = [
+                {},
+                {"id": 7},
+                {"success": True},
+                PaperlessError(404, "mail_rules/9/", b""),
+                {"user": {"is_superuser": True}},
+                {},
+                {"id": 10},
+            ]
+            self.paperless.apply()
+            self.assertEqual(self.settings.value["account_id"], 7)
+            self.assertEqual(self.settings.value["rule_id"], 10)
+            self.assertEqual(request.call_args.args[:2], ("POST", "mail_rules/"))
+            self.assertEqual(request.call_args_list[-2].args[:2], ("PATCH", "mail_accounts/7/"))
+
+    def test_inaccessible_or_failed_lookup_never_discards_existing_links(self):
+        self.settings.value.update(
+            self.payload | {"host": "bridge.test", "account_id": 7, "rule_id": 9}
+        )
+        for key, resource in (("account_id", "mail_accounts"), ("rule_id", "mail_rules")):
+            for identity in (
+                {},
+                {"user": {}},
+                {"user": {"is_superuser": False}},
+                {"user": {"is_superuser": "true"}},
+            ):
+                with patch.object(self.paperless, "request") as request:
+                    request.side_effect = [PaperlessError(404, resource, b""), identity]
+                    with self.assertRaisesRegex(ValueError, "missing or inaccessible"):
+                        self.paperless.existing_id(resource, key)
+            for status in (401, 403, 500):
+                with patch.object(self.paperless, "request") as request:
+                    request.side_effect = PaperlessError(status, resource, b"")
+                    with self.assertRaises(PaperlessError):
+                        self.paperless.existing_id(resource, key)
+                    self.assertEqual(request.call_count, 1)
+        self.assertEqual(self.settings.value["account_id"], 7)
+        self.assertEqual(self.settings.value["rule_id"], 9)

@@ -145,6 +145,21 @@ def browser_checks(origin: str, password: str) -> None:
         page.get_by_label("Move processed email to", exact=True).select_option("Folders/Processed")
         page.get_by_role("button", name="Refresh folders", exact=True).click()
         expect(page.get_by_label("Source folder", exact=True)).to_have_value("Folders/Paperless")
+        age = page.get_by_label("Maximum email age (days)", exact=True)
+        expect(page.locator("#maximum-age-help")).to_contain_text("0 to 32767")
+        saved_before = context.request.get(origin + "/api/state").json()["settings"]["maximum_age"]
+        for value in ("36500", "32768", "-1", "90.5"):
+            age.fill(value)
+            page.get_by_role("button", name="Save settings", exact=True).click()
+            assert age.evaluate("input => !input.validity.valid")
+            assert (
+                context.request.get(origin + "/api/state").json()["settings"]["maximum_age"]
+                == saved_before
+            )
+        for value in ("0", "32767", "90"):
+            age.fill(value)
+            assert age.evaluate("input => input.validity.valid")
+        age.fill("0")
         page.route(
             "**/api/paperless/save",
             lambda route: route.fulfill(status=400, json={"error": "Settings could not be saved"}),
@@ -162,6 +177,7 @@ def browser_checks(origin: str, password: str) -> None:
         expect(page.locator("#token-status")).to_contain_text("API token saved securely")
         saved_state = context.request.get(origin + "/api/state").json()
         assert saved_state["paperless_token_saved"] is True
+        assert saved_state["settings"]["maximum_age"] == 0
         assert "test-paperless-api-token-value" not in json.dumps(saved_state)
         fixture["settings"] = saved_state["settings"]
         fixture["accounts"].append(
