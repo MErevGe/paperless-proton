@@ -176,18 +176,37 @@ class Synchronizer:
             time.sleep(1)
 
 
+def plan_path(requested: Path) -> Path:
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        temporary = os.environ.get("RUNNER_TEMP")
+        if not temporary:
+            raise SyncError("RUNNER_TEMP is required for workflow reports.")
+        root = Path(temporary).resolve() / "sonar-sync"
+    else:
+        root = Path.cwd() / ".local" / "sonar-sync"
+    filename = requested.name
+    if (
+        not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,95}\.json", filename)
+        or requested.resolve().parent != root
+    ):
+        raise SyncError("Write JSON plans only in .local/sonar-sync or RUNNER_TEMP/sonar-sync.")
+    return root / filename
+
+
 def write_plan(
     path: Path, analysis: str, revision: str, changes: list[Change], labels: set[str]
 ) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    destination = plan_path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "analysis": analysis,
         "revision": revision,
         "create_labels": sorted(labels),
         "changes": [asdict(change) for change in changes],
     }
-    with path.open("w", encoding="utf-8") as output:
-        os.chmod(path, 0o600)
+    descriptor = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+        os.fchmod(output.fileno(), 0o600)
         json.dump(data, output, ensure_ascii=True, indent=2)
         output.write("\n")
 
@@ -209,7 +228,12 @@ def main() -> int:
         action="store_true",
         help="Write changes in the main workflow (default: preview only).",
     )
-    parser.add_argument("--plan", type=Path, required=True, help="Path for the JSON preview plan.")
+    parser.add_argument(
+        "--plan",
+        type=Path,
+        required=True,
+        help="JSON plan in .local/sonar-sync (RUNNER_TEMP/sonar-sync in Actions).",
+    )
     args = parser.parse_args()
     try:
         if args.apply and (

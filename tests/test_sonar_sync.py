@@ -12,7 +12,7 @@ from sonar_fixtures import PROJECT, REPOSITORY, REVISION, ServiceFixture, hotspo
 
 from ci.sonar_api import SyncError, array_value, identifier, integer_value, object_value, text_value
 from ci.sonar_findings import END_MARKER, LABELS, managed_tickets, parse_finding, plan_changes
-from ci.sonar_sync import Synchronizer, main, summary, write_plan
+from ci.sonar_sync import Synchronizer, main, plan_path, summary, write_plan
 
 
 class FindingTests(unittest.TestCase):
@@ -408,7 +408,7 @@ class CommandTests(unittest.TestCase):
     def test_preview_is_default_and_report_is_private_and_complete(self):
         fixture = ServiceFixture()
         with tempfile.TemporaryDirectory() as directory:
-            plan = Path(directory) / "nested" / "plan.json"
+            plan = Path(directory) / "sonar-sync" / "plan.json"
             report = Path(directory) / "summary.md"
             env = {
                 "SONAR_TOKEN": "sonar-test-token",
@@ -419,6 +419,7 @@ class CommandTests(unittest.TestCase):
                 "GITHUB_STEP_SUMMARY": str(report),
                 "GITHUB_ACTIONS": "true",
                 "GITHUB_REF": "refs/heads/main",
+                "RUNNER_TEMP": directory,
             }
             with (
                 patch.dict(os.environ, env, clear=True),
@@ -488,7 +489,42 @@ class CommandTests(unittest.TestCase):
 
     def test_empty_plan_and_summary(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "plan.json"
-            write_plan(path, "analysis", REVISION, [], set())
+            path = Path(directory) / ".local" / "sonar-sync" / "plan.json"
+            with (
+                patch.dict(os.environ, {}, clear=True),
+                patch("ci.sonar_sync.Path.cwd", return_value=Path(directory)),
+            ):
+                write_plan(path, "analysis", REVISION, [], set())
             self.assertEqual(json.loads(path.read_text())["changes"], [])
         self.assertIn("Create: 0", summary([], False))
+
+    def test_report_path_rejects_traversal_and_symlinks_without_touching_other_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "sonar-sync"
+            root.mkdir()
+            outside = Path(directory) / "outside.json"
+            outside.write_text("keep this data")
+            link = root / "link.json"
+            link.symlink_to(outside)
+            cases = (
+                outside,
+                root / ".." / "outside.json",
+                link,
+                root / "plan.txt",
+                root / "../sonar-sync/../../outside.json",
+            )
+            with patch.dict(
+                os.environ, {"GITHUB_ACTIONS": "true", "RUNNER_TEMP": directory}, clear=True
+            ):
+                for path in cases:
+                    with self.subTest(path=path), self.assertRaises(SyncError):
+                        write_plan(path, "analysis", REVISION, [], set())
+                self.assertEqual(outside.read_text(), "keep this data")
+                internal_link = root / "internal.json"
+                internal_link.symlink_to(root / "target.json")
+                with self.assertRaises(OSError):
+                    write_plan(internal_link, "analysis", REVISION, [], set())
+                self.assertFalse((root / "target.json").exists())
+            with patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}, clear=True):
+                with self.assertRaisesRegex(SyncError, "RUNNER_TEMP"):
+                    plan_path(outside)

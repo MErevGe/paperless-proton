@@ -206,8 +206,9 @@ class HttpsIntegrationTests(unittest.TestCase):
             "SONAR_REVISION": REVISION,
             "GITHUB_ACTIONS": "true",
             "GITHUB_REF": "refs/heads/main",
+            "RUNNER_TEMP": str(self.directory),
         }
-        plan = self.directory / "plan.json"
+        plan = self.directory / "sonar-sync" / "plan.json"
         with (
             patch("ci.sonar_api.ssl.create_default_context", return_value=context),
             patch.dict(os.environ, env, clear=True),
