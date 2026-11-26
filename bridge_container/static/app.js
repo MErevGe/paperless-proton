@@ -6,7 +6,7 @@ let state = null;
 let initialized = false;
 let accountSignature = "";
 let noticeTimer;
-let polling = false;
+let polling = null;
 let folderAccount = null;
 let folderRequest = 0;
 let foldersReady = false;
@@ -459,11 +459,16 @@ $("#refresh-folders").addEventListener("click", () =>
   busy($("#refresh-folders"), () => loadFolders(true)),
 );
 
-async function refresh() {
-  if (!authenticated || polling) return;
-  polling = true;
+async function refresh(fresh = false) {
+  if (!authenticated) return;
+  if (polling) {
+    if (!fresh) return;
+    await Promise.allSettled([polling]);
+    return refresh(true);
+  }
+  polling = request("state");
   try {
-    state = await request("state");
+    state = await polling;
     $("#service-badge").textContent = state.ready
       ? "Bridge running"
       : "Bridge starting";
@@ -492,7 +497,7 @@ async function refresh() {
     }
     void loadFolders();
   } finally {
-    polling = false;
+    polling = null;
   }
 }
 
@@ -589,8 +594,9 @@ async function paperlessAction(action, button) {
         return;
       await request("paperless/save", payload);
       $("#paperless-token").value = "";
+      await refresh(true);
       profileDirty = false;
-      await refresh();
+      renderProfileStatus();
       if (action === "save") {
         notice("Import profile saved.");
         return;
@@ -600,7 +606,7 @@ async function paperlessAction(action, button) {
       try {
         const result = await request(`paperless/${action}`, { proton_id: id });
         $("#paperless-result").textContent = result.message;
-        await refresh();
+        await refresh(true);
       } catch (error) {
         $("#paperless-result").textContent = error.message;
         throw error;

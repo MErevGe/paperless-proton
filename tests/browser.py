@@ -313,6 +313,52 @@ def browser_checks(origin: str, password: str) -> None:
         assert two_profiles["second-account"]["destination"] == "Folders/Second"
         assert two_profiles["second-account"]["maximum_age"] == 90
         assert two_profiles["second-account"]["token_saved"] is True
+        delayed_states = []
+
+        def delayed_state(route):
+            saved = context.request.get(origin + "/api/state").json()
+            delayed_states.append((route, fixture | {"profiles": saved["profiles"]}))
+            page.locator("html").evaluate(
+                "(node, count) => { node.dataset.delayedProfileStates = count; }",
+                len(delayed_states),
+            )
+
+        page.route("**/api/state", delayed_state)
+        with page.expect_request("**/api/state", timeout=10000):
+            pass
+        expect(page.locator("html")).to_have_attribute("data-delayed-profile-states", "1")
+        age.fill("91")
+        with page.expect_response("**/api/paperless/save") as saved_response:
+            page.get_by_role("button", name="Save settings", exact=True).click()
+        assert saved_response.value.ok
+        expect(page.get_by_label("Proton account", exact=True)).to_be_disabled()
+        expect(page.get_by_role("button", name="Save settings", exact=True)).to_be_disabled()
+        stale_route, stale_state = delayed_states[0]
+        assert stale_state["profiles"]["second-account"]["maximum_age"] == 90
+        with page.expect_request("**/api/state", timeout=10000):
+            stale_route.fulfill(json=stale_state)
+        expect(page.locator("html")).to_have_attribute("data-delayed-profile-states", "2")
+        expect(page.get_by_label("Proton account", exact=True)).to_be_disabled()
+        fresh_route, fresh_state = delayed_states[1]
+        assert fresh_state["profiles"]["second-account"]["maximum_age"] == 91
+        page.unroute("**/api/state", delayed_state)
+        fresh_route.fulfill(json=fresh_state)
+        expect(page.get_by_role("button", name="Save settings", exact=True)).to_be_enabled()
+        page.get_by_label("Proton account", exact=True).select_option("test-account")
+        page.get_by_label("Proton account", exact=True).select_option("second-account")
+        expect(age).to_have_value("91")
+        expect(page.get_by_label("Source folder", exact=True)).to_have_value("INBOX")
+        expect(page.get_by_label("Move processed email to", exact=True)).to_have_value(
+            "Folders/Second"
+        )
+        page.get_by_role("button", name="Save settings", exact=True).click()
+        expect(page.get_by_role("button", name="Save settings", exact=True)).to_be_enabled()
+        assert (
+            context.request.get(origin + "/api/state").json()["profiles"]["second-account"][
+                "maximum_age"
+            ]
+            == 91
+        )
         page.get_by_label("API token", exact=True).fill("unsaved-token-to-discard")
         page.get_by_label("Proton account", exact=True).select_option("test-account")
         page.get_by_role("dialog").get_by_role("button", name="Continue").click()
