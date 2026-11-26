@@ -312,6 +312,30 @@ class SynchronizationTests(unittest.TestCase):
                 self.sync.prepare()
         self.assertEqual(self.fixture.writes, [])
 
+    def test_new_main_analysis_interrupts_label_creation_ticket_creation_and_closure(self):
+        for phase in ("labels", "issues", "closure"):
+            fixture = ServiceFixture()
+            if phase != "labels":
+                fixture.existing_labels()
+            if phase == "closure":
+                fixture.tickets = [ticket(parse_finding(issue(), PROJECT, "issue"))]
+                fixture.issues[0]["issueStatus"] = "FIXED"
+            sync = fixture.synchronizer()
+            analysis, changes, labels = sync.prepare()
+
+            def changed_analysis(method, path, fixture=fixture, **kwargs):
+                result = fixture.request(method, path, **kwargs)
+                if method != "GET":
+                    fixture.analysis_key = "new-analysis"
+                return result
+
+            sync.github.request.side_effect = changed_analysis
+            with self.subTest(phase=phase), self.assertRaisesRegex(SyncError, "before applying"):
+                sync.apply(analysis, changes, labels)
+            self.assertEqual(len(fixture.writes), 1)
+            if phase == "closure":
+                self.assertEqual(fixture.tickets[0]["state"], "open")
+
     def test_api_limits_fail_explicitly(self):
         self.sync.sonar.request.side_effect = None
         self.sync.sonar.request.return_value = {"paging": {"total": 10001}}

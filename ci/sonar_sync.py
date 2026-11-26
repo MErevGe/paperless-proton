@@ -132,10 +132,14 @@ class Synchronizer:
             raise SyncError("The SonarQube analysis changed during synchronization.")
         return analysis, changes, LABELS.keys() - labels if changes else set()
 
-    def apply(self, analysis: str, changes: list[Change], missing_labels: set[str]) -> None:
+    def require_analysis(self, analysis: str) -> None:
         if self.analysis() != analysis:
             raise SyncError("The SonarQube analysis changed before applying the plan.")
+
+    def apply(self, analysis: str, changes: list[Change], missing_labels: set[str]) -> None:
+        self.require_analysis(analysis)
         for label in sorted(missing_labels):
+            self.require_analysis(analysis)
             self.github.request(
                 "POST",
                 self.repository + "/labels",
@@ -165,6 +169,7 @@ class Synchronizer:
                     raise SyncError(
                         "A GitHub issue changed after preview; rerun to preserve edits."
                     )
+            self.require_analysis(analysis)
             self.github.request(
                 "POST" if change.number is None else "PATCH", path, body=change.payload
             )
