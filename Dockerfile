@@ -1,4 +1,4 @@
-FROM golang:1.26.11-alpine3.24@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS build
+FROM golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
 
 ARG BRIDGE_REVISION=3e9f85aa3c676a573b64b1d90829970ded26dbfa
 ARG BRIDGE_VERSION=3.27.2
@@ -28,6 +28,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     && tar --exclude=./.git --exclude=./bridge --exclude=./proton-bridge -czf /source.tar.gz .
 
 FROM build AS upstream-tests
+COPY build/bridge/go.mod build/bridge/go.sum build/bridge/dependencies.go /manifest/
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    cd /manifest && test -z "$(gofmt -l dependencies.go)" && go mod tidy -diff && go mod verify
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go test ./internal/certs ./pkg/message ./pkg/mime
