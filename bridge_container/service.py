@@ -20,8 +20,18 @@ def serve(data: Path) -> int:
         signal.signal(signum, lambda _signal, _frame: stopped.set())
     processes: list[subprocess.Popen[bytes]] = []
     try:
+        processes.append(subprocess.Popen(["proton-bridge", "--grpc", "--log-level", "warn"]))
+        processes.append(subprocess.Popen(["python3", "-m", "bridge_container", "web"]))
         processes.append(
-            subprocess.Popen(["proton-bridge", "--noninteractive", "--log-level", "warn"])
+            subprocess.Popen(
+                [
+                    "socat",
+                    f"OPENSSL-LISTEN:8443,reuseaddr,fork,max-children=32,verify=0,"
+                    f"min-version=TLS1.2,cert={data}/web/tls/server.crt,"
+                    f"key={data}/web/tls/server.key",
+                    "TCP:127.0.0.1:8080,connect-timeout=5",
+                ]
+            )
         )
         processes.append(
             subprocess.Popen(

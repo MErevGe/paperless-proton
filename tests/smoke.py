@@ -9,14 +9,20 @@ import time
 import uuid
 from pathlib import Path
 
+from web_smoke import web_checks
+
 
 def docker(*args: str, **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(["docker", *args], check=True, text=True, capture_output=True, **kwargs)
 
 
-def smoke(image: str) -> None:
+def smoke(image: str, run_browser: bool = False) -> None:
     name = "paperless-proton-test-" + uuid.uuid4().hex[:12]
     volume = name + "-data"
+    with socket.socket() as reserve:
+        reserve.bind(("127.0.0.1", 0))
+        web_port = reserve.getsockname()[1]
+    origin = f"https://localhost:{web_port}"
     docker("volume", "create", volume)
     common = [
         "--init",
@@ -29,22 +35,24 @@ def smoke(image: str) -> None:
         f"type=volume,source={volume},target=/data",
         "-e",
         "BRIDGE_HOST=localhost",
+        "-e",
+        f"WEB_ORIGIN={origin}",
     ]
     try:
         version = docker("run", "--rm", image, "version").stdout
         assert "Proton Mail Bridge 3." in version, version
-        configured = docker(
+        docker(
             "run",
-            "--rm",
-            "-i",
+            "-d",
+            "--name",
+            name,
+            "-p",
+            "127.0.0.1::1993",
+            "-p",
+            f"127.0.0.1:{web_port}:8443",
             *common,
             image,
-            "setup",
-            input="updates autoupdates disable\nexit\n",
-            timeout=90,
         )
-        assert "panic" not in configured.stderr.lower(), configured.stderr
-        docker("run", "-d", "--name", name, "-p", "127.0.0.1::1993", *common, image)
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             state = json.loads(docker("inspect", name).stdout)[0]["State"]
@@ -93,6 +101,7 @@ def smoke(image: str) -> None:
                 except ConnectionResetError:
                     response = b""
                 assert b"OK" not in response, "Plaintext IMAP was accepted"
+        web_checks(name, origin, docker, run_browser)
         key_id = docker("exec", name, "cat", "/data/password-store/.gpg-id").stdout
         docker(
             "exec",
@@ -109,6 +118,18 @@ def smoke(image: str) -> None:
         assert docker("exec", name, "cat", "/data/password-store/.gpg-id").stdout == key_id
         assert docker("exec", name, "cat", "/data/tls/ca.crt").stdout == exported
         assert docker("exec", name, "pass", "show", "smoke-test").stdout == "roundtrip-test-value\n"
+        docker("stop", "--time", "20", name)
+        configured = docker(
+            "run",
+            "--rm",
+            "-i",
+            *common,
+            image,
+            "setup",
+            input="updates autoupdates disable\nexit\n",
+            timeout=90,
+        )
+        assert "panic" not in configured.stderr.lower(), configured.stderr
         print(f"Passed: {image}: startup, TLS, validation, plaintext rejection, persistence")
     finally:
         subprocess.run(["docker", "rm", "-f", name], capture_output=True, check=False)
@@ -116,4 +137,4 @@ def smoke(image: str) -> None:
 
 
 if __name__ == "__main__":
-    smoke(sys.argv[1])
+    smoke(sys.argv[1], "--browser" in sys.argv[2:])

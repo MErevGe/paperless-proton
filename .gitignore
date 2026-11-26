@@ -17,3 +17,4 @@ data/
 *.tar
 *.tar.gz
 *.log
+node_modules/

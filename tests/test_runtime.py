@@ -73,7 +73,7 @@ class ServiceTests(unittest.TestCase):
         child = popen.return_value
         child.poll.return_value = None
         self.assertEqual(serve(Path("/data")), 0)
-        self.assertEqual(child.terminate.call_count, 2)
+        self.assertEqual(child.terminate.call_count, 4)
         signal.call_args.args[1](None, None)
         event.return_value.set.assert_called_once()
 
@@ -85,7 +85,7 @@ class ServiceTests(unittest.TestCase):
         dead, live = MagicMock(), MagicMock()
         dead.poll.return_value = 1
         live.poll.return_value = None
-        popen.side_effect = [dead, live]
+        popen.side_effect = [dead, live, MagicMock(), MagicMock()]
         self.assertEqual(serve(Path("/data")), 1)
         live.terminate.assert_called_once()
         dead.terminate.assert_not_called()
@@ -97,7 +97,7 @@ class ServiceTests(unittest.TestCase):
         event.return_value.wait.return_value = True
         child = popen.return_value
         child.poll.return_value = None
-        child.wait.side_effect = [subprocess.TimeoutExpired("bridge", 10), 0, 0]
+        child.wait.side_effect = [subprocess.TimeoutExpired("bridge", 10), 0, 0, 0, 0]
         self.assertEqual(serve(Path("/data")), 0)
         child.kill.assert_called_once()
 
@@ -126,13 +126,37 @@ class CommandTests(unittest.TestCase):
             self.assertEqual(main(["certificate"], data), 0)
             self.assertEqual(output.getvalue(), "PUBLIC CERTIFICATE\n")
 
+    def test_web_token_certificate_and_access_reset(self):
+        from bridge_container.web_auth import Auth
+
+        with tempfile.TemporaryDirectory() as directory:
+            data = Path(directory)
+            auth = Auth(data)
+            original = auth.token_path.read_text()
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(main(["web-setup-token"], data), 0)
+            self.assertEqual(output.getvalue().strip(), original)
+            (data / "web/tls").mkdir()
+            (data / "web/tls/ca.crt").write_text("PUBLIC WEB CA")
+            with redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(main(["web-certificate"], data), 0)
+            self.assertEqual(output.getvalue(), "PUBLIC WEB CA")
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["reset-web-access"], data), 0)
+            self.assertNotEqual(auth.token_path.read_text(), original)
+
+    @patch("bridge_container.web_server.run_web")
+    def test_web_command(self, run):
+        self.assertEqual(main(["web"]), 0)
+        run.assert_called_once_with(Path("/data"))
+
     @patch("bridge_container.__main__.healthcheck")
     def test_healthcheck_command(self, check):
         self.assertEqual(main(["healthcheck"]), 0)
         check.assert_called_once()
 
-    @patch.dict("os.environ", {}, clear=True)
-    def test_missing_hostname(self):
+    @patch.dict("os.environ", {"BRIDGE_HOST": "bad host"}, clear=True)
+    def test_invalid_hostname(self):
         with self.assertRaises(ValueError):
             main(["serve"])
 
@@ -142,7 +166,8 @@ class CommandTests(unittest.TestCase):
     @patch("bridge_container.__main__.serve", return_value=0)
     def test_service_command(self, service, credentials, certificates):
         self.assertEqual(main(["serve"]), 0)
-        certificates.assert_called_once_with(Path("/data"), "bridge.test")
+        certificates.assert_any_call(Path("/data"), "bridge.test")
+        certificates.assert_any_call(Path("/data/web"), "localhost")
         credentials.assert_called_once()
         service.assert_called_once()
 

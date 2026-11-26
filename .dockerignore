@@ -2,6 +2,11 @@
 !Dockerfile
 !bridge_container/
 !bridge_container/*.py
+!bridge_container/static/
+!bridge_container/static/*
+!bridge_container/generated/
+!bridge_container/generated/*.py
+!requirements.txt
 !build/
 !build/bridge/
 !build/bridge/go.mod

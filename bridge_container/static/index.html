@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>Paperless Proton</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/style.css" />
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <div
+      id="notice"
+      class="notice"
+      role="status"
+      aria-live="polite"
+      hidden
+    ></div>
+    <main id="gate" class="gate">
+      <div class="brand">
+        <span class="brand-icon" aria-hidden="true">↗</span> Paperless Proton
+      </div>
+      <section class="card auth-card">
+        <span class="eyebrow">YOUR MAIL. YOUR DOCUMENTS.</span>
+        <h1 id="gate-title">Welcome back</h1>
+        <p id="gate-description">Sign in to manage your connection.</p>
+        <form id="admin-form" hidden>
+          <div id="bootstrap" hidden>
+            <label for="setup-token">Setup token</label>
+            <input
+              id="setup-token"
+              name="setup_token"
+              type="password"
+              autocomplete="off"
+              maxlength="128"
+            />
+            <p class="hint">Read the token on the server:</p>
+            <code class="command"
+              >docker compose exec bridge python3 -m bridge_container
+              web-setup-token</code
+            >
+          </div>
+          <label for="admin-password">Admin password</label>
+          <input
+            id="admin-password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            maxlength="1024"
+            required
+          />
+          <p class="hint" id="password-hint" hidden>
+            Choose at least 12 characters. This password protects this app.
+          </p>
+          <button class="primary full" id="admin-submit">Sign in</button>
+        </form>
+      </section>
+      <p class="gate-footer">
+        A private connection between Proton Mail and Paperless-ngx.
+      </p>
+    </main>
+    <div id="workspace" class="workspace" hidden>
+      <aside class="sidebar">
+        <a href="#overview" class="brand"
+          ><span class="brand-icon" aria-hidden="true">↗</span
+          ><span>Paperless<br /><strong>Proton</strong></span></a
+        >
+        <span class="nav-heading">WORKSPACE</span>
+        <nav aria-label="Main navigation">
+          <a href="#overview" data-page="overview"
+            ><span aria-hidden="true">◫</span> Overview</a
+          >
+          <a href="#proton" data-page="proton"
+            ><span class="nav-number">1</span> Proton account</a
+          >
+          <a href="#connection" data-page="connection"
+            ><span class="nav-number">2</span> Bridge connection</a
+          >
+          <a href="#paperless" data-page="paperless"
+            ><span class="nav-number">3</span> Paperless setup</a
+          >
+          <a href="#security" data-page="security"
+            ><span aria-hidden="true">◇</span> Admin access</a
+          >
+        </nav>
+        <div class="sidebar-footer">
+          <span class="dot"></span> Private by design<br /><small
+            >Proton Mail → Paperless-ngx</small
+          >
+        </div>
+      </aside>
+      <div class="main-column">
+        <header class="topbar">
+          <span>Connection workspace</span
+          ><button id="sign-out" class="quiet">Sign out ↗</button>
+        </header>
+        <main class="content">
+          <section id="overview" class="page">
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">OVERVIEW</span>
+                <h1>From inbox to archive.</h1>
+                <p>
+                  Set up your connection, then let Paperless collect your
+                  attachments.
+                </p>
+              </div>
+              <span class="badge" id="service-badge">Starting</span>
+            </div>
+            <div class="summary-grid">
+              <article class="card metric">
+                <span class="eyebrow">PROTON MAIL</span
+                ><strong id="account-summary">No account connected</strong
+                ><span>Encrypted mail, available through Bridge.</span>
+              </article>
+              <article class="card metric">
+                <span class="eyebrow">BRIDGE CONNECTION</span
+                ><strong id="bridge-summary">—</strong
+                ><span>SSL/TLS · Certificate verification enabled</span>
+              </article>
+              <article class="card metric">
+                <span class="eyebrow">PAPERLESS</span
+                ><strong id="paperless-summary">Not configured</strong
+                ><span id="paperless-detail"
+                  >Connect your document archive.</span
+                >
+              </article>
+            </div>
+            <section class="card getting-started">
+              <div>
+                <span class="eyebrow">GET CONNECTED</span>
+                <h2>Three steps to your first document</h2>
+                <p>
+                  Your emails stay in Proton. Paperless imports the attachments
+                  you choose.
+                </p>
+              </div>
+              <a href="#proton" class="step"
+                ><span class="step-number">01</span>
+                <div>
+                  <h3>Connect Proton Mail</h3>
+                  <p>Sign in with your paid Proton account.</p>
+                </div>
+                <span aria-hidden="true">↗</span></a
+              >
+              <a href="#connection" class="step"
+                ><span class="step-number">02</span>
+                <div>
+                  <h3>Prepare the secure connection</h3>
+                  <p>Set the server address and install the certificate.</p>
+                </div>
+                <span aria-hidden="true">↗</span></a
+              >
+              <a href="#paperless" class="step"
+                ><span class="step-number">03</span>
+                <div>
+                  <h3>Set up Paperless</h3>
+                  <p>Test the connection and create your import rule.</p>
+                </div>
+                <span aria-hidden="true">↗</span></a
+              >
+            </section>
+            <p class="footnote">
+              Connected services do not confirm an import. Move an email with a
+              PDF into your source folder, then check that its document appears
+              in Paperless.
+            </p>
+          </section>
+          <section id="proton" class="page" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">STEP 01</span>
+                <h1>Connect Proton Mail</h1>
+                <p>Your sign-in is saved securely by Proton Bridge.</p>
+              </div>
+            </div>
+            <div class="two-column">
+              <section class="card">
+                <h2>Your accounts</h2>
+                <div id="accounts"><p class="muted">No accounts yet.</p></div>
+              </section>
+              <section class="card">
+                <h2>Add an account</h2>
+                <p>A paid Proton Mail plan is required.</p>
+                <form id="proton-form">
+                  <label for="proton-user">Proton username or email</label
+                  ><input
+                    id="proton-user"
+                    name="username"
+                    autocomplete="username"
+                    required
+                    maxlength="256"
+                  /><label for="proton-password">Proton password</label
+                  ><input
+                    id="proton-password"
+                    name="password"
+                    type="password"
+                    autocomplete="current-password"
+                    required
+                    maxlength="1024"
+                  /><button class="primary">Connect account</button>
+                </form>
+                <form id="challenge-form" hidden>
+                  <p id="challenge-description"></p>
+                  <a
+                    id="verification-link"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    hidden
+                    >Open Proton verification ↗</a
+                  ><label id="challenge-label" for="challenge-password"
+                    >Authenticator code</label
+                  ><input
+                    id="challenge-password"
+                    name="password"
+                    type="password"
+                    autocomplete="one-time-code"
+                    required
+                    maxlength="1024"
+                  /><button class="primary">Continue</button>
+                </form>
+                <div id="login-progress" role="status" hidden>
+                  Waiting for Proton…
+                </div>
+                <p id="login-error" class="error" role="alert" hidden></p>
+                <button id="cancel-login" class="quiet" hidden>
+                  Cancel sign-in
+                </button>
+                <p class="hint">
+                  Authenticator codes and a separate mailbox password are
+                  supported. If your account only uses a security key, enable an
+                  authenticator code in Proton first.
+                </p>
+              </section>
+            </div>
+            <section class="card credentials-card" id="credentials-card" hidden>
+              <h2>Bridge credentials</h2>
+              <p>
+                Use these credentials for IMAP. They are separate from your
+                Proton password.
+              </p>
+              <label for="bridge-user">Username</label
+              ><input id="bridge-user" readonly /><label for="bridge-password"
+                >Bridge password</label
+              ><input
+                id="bridge-password"
+                readonly
+                type="password"
+                autocomplete="off"
+              />
+              <div class="actions">
+                <button id="reveal-password" class="secondary">
+                  Show password</button
+                ><button id="hide-credentials" class="quiet">Close</button>
+              </div>
+            </section>
+          </section>
+          <section id="connection" class="page" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">STEP 02</span>
+                <h1>A secure path to your mail</h1>
+                <p>Use a hostname or IP address that Paperless can reach.</p>
+              </div>
+            </div>
+            <div class="two-column">
+              <section class="card">
+                <h2>Bridge address</h2>
+                <form id="connection-form">
+                  <label for="bridge-host">Hostname or IP address</label
+                  ><input
+                    id="bridge-host"
+                    name="host"
+                    placeholder="bridge.example.internal"
+                    maxlength="253"
+                    required
+                  />
+                  <p class="hint">
+                    The certificate is issued for this exact address. Changes
+                    take effect after restarting the container.
+                  </p>
+                  <label for="bridge-port">Published IMAP port</label
+                  ><input id="bridge-port" readonly />
+                  <p class="hint">
+                    Change BRIDGE_PORT and BRIDGE_BIND_IP in .env, then recreate
+                    the container. Port mappings are managed by Docker.
+                  </p>
+                  <button class="primary">Save address</button>
+                </form>
+                <p id="restart-notice" class="callout" hidden>
+                  Hostname change pending. Run
+                  <code>docker compose restart bridge</code> before testing
+                  Paperless.
+                </p>
+              </section>
+              <section class="card">
+                <span class="eyebrow">SSL / TLS</span>
+                <h2>Trust the Bridge certificate</h2>
+                <p>
+                  Download the public certificate and copy it to your Paperless
+                  Compose directory.
+                </p>
+                <a
+                  class="button secondary"
+                  href="/api/certificate"
+                  download="proton-bridge-ca.crt"
+                  >↓ Download certificate</a
+                >
+                <p>
+                  Add these entries to your existing Paperless service, then
+                  recreate it:
+                </p>
+                <pre><code>environment:
+  PAPERLESS_EMAIL_CERTIFICATE_LOCATION: /etc/paperless/proton-bridge-ca.crt
+volumes:
+  - ./proton-bridge-ca.crt:/etc/paperless/proton-bridge-ca.crt:ro</code></pre>
+                <p class="hint">
+                  Give a separate mail worker the same certificate and setting.
+                  Keep certificate verification enabled.
+                </p>
+              </section>
+            </div>
+          </section>
+          <section id="paperless" class="page" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">STEP 03</span>
+                <h1>Connect your archive</h1>
+                <p>
+                  Test from Paperless, then create or update its email account
+                  and import rule.
+                </p>
+              </div>
+            </div>
+            <form id="paperless-form">
+              <div class="two-column">
+                <section class="card">
+                  <h2>Paperless connection</h2>
+                  <label for="paperless-url">Paperless URL</label
+                  ><input
+                    id="paperless-url"
+                    name="paperless_url"
+                    type="url"
+                    placeholder="https://paperless.example.internal"
+                    required
+                    maxlength="512"
+                  /><label for="paperless-token">API token</label
+                  ><input
+                    id="paperless-token"
+                    name="token"
+                    type="password"
+                    autocomplete="off"
+                    maxlength="256"
+                  />
+                  <p class="hint">
+                    Copy the token from your Paperless user profile. It needs
+                    permission to add and change mail accounts and mail rules.
+                    Leave blank to keep the saved token.
+                  </p>
+                  <label for="proton-address">Proton email address</label
+                  ><select id="proton-address" required>
+                    <option value="">
+                      Connect a Proton account first
+                    </option></select
+                  ><label for="account-name">Email account name</label
+                  ><input
+                    id="account-name"
+                    name="account_name"
+                    required
+                    maxlength="256"
+                  />
+                  <details>
+                    <summary>Connection options</summary>
+                    <label class="checkbox"
+                      ><input
+                        type="checkbox"
+                        name="allow_http"
+                        id="allow-http"
+                      /><span
+                        >Allow unencrypted HTTP on a trusted LAN or VPN</span
+                      ></label
+                    >
+                    <p class="hint">
+                      HTTP exposes the API token and Bridge password on the
+                      network. Prefer HTTPS.
+                    </p>
+                    <label for="paperless-ca"
+                      >Paperless CA certificate (optional)</label
+                    ><textarea
+                      id="paperless-ca"
+                      name="paperless_ca"
+                      rows="5"
+                      placeholder="-----BEGIN CERTIFICATE-----"
+                      maxlength="32768"
+                    ></textarea>
+                    <p class="hint">
+                      Only needed if Paperless uses a private certificate
+                      authority. Server verification stays enabled.
+                    </p>
+                  </details>
+                </section>
+                <section class="card">
+                  <h2>Import rule</h2>
+                  <p>
+                    Create the source and destination folders in Proton Mail
+                    first.
+                  </p>
+                  <label for="rule-name">Rule name</label
+                  ><input
+                    id="rule-name"
+                    name="rule_name"
+                    required
+                    maxlength="256"
+                  /><label for="source-folder">Source folder</label
+                  ><input
+                    id="source-folder"
+                    name="folder"
+                    required
+                    maxlength="256"
+                  /><label for="destination-folder"
+                    >Move processed email to</label
+                  ><input
+                    id="destination-folder"
+                    name="destination"
+                    required
+                    maxlength="256"
+                  /><label for="attachment-filter"
+                    >Attachment filename filter</label
+                  ><input
+                    id="attachment-filter"
+                    name="attachment_filter"
+                    required
+                    maxlength="256"
+                  /><label for="maximum-age">Maximum email age (days)</label
+                  ><input
+                    id="maximum-age"
+                    name="maximum_age"
+                    type="number"
+                    min="1"
+                    max="36500"
+                    required
+                  />
+                  <p class="hint">
+                    Paperless imports matching attachments and moves the
+                    processed email. The rule is enabled when you apply it.
+                  </p>
+                </section>
+              </div>
+              <div class="card action-bar">
+                <div>
+                  <strong>Ready to connect?</strong>
+                  <p>
+                    Install the Bridge certificate in Paperless before testing.
+                  </p>
+                </div>
+                <div class="actions">
+                  <button class="secondary" type="submit">Save settings</button
+                  ><button class="secondary" type="button" id="test-paperless">
+                    Test connection</button
+                  ><button class="primary" type="button" id="apply-paperless">
+                    Apply to Paperless ↗
+                  </button>
+                </div>
+              </div>
+            </form>
+            <p id="paperless-result" class="callout" role="status" hidden></p>
+          </section>
+          <section id="security" class="page" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">ADMIN ACCESS</span>
+                <h1>Your workspace, protected.</h1>
+                <p>Manage the password used to access this app.</p>
+              </div>
+            </div>
+            <section class="card narrow">
+              <h2>Change admin password</h2>
+              <form id="password-form">
+                <label for="current-password">Current password</label
+                ><input
+                  id="current-password"
+                  name="current"
+                  type="password"
+                  autocomplete="current-password"
+                  required
+                  maxlength="1024"
+                /><label for="new-password">New password</label
+                ><input
+                  id="new-password"
+                  name="password"
+                  type="password"
+                  autocomplete="new-password"
+                  minlength="12"
+                  maxlength="1024"
+                  required
+                />
+                <p class="hint">
+                  Use at least 12 characters. Changing the password signs out
+                  every browser session.
+                </p>
+                <button class="primary">Change password</button>
+              </form>
+            </section>
+          </section>
+        </main>
+        <footer class="page-footer">
+          <span>Paperless Proton</span
+          ><span>Mail in Proton. Documents in Paperless.</span>
+        </footer>
+      </div>
+    </div>
+    <dialog id="confirmation">
+      <form method="dialog">
+        <h2 id="confirm-title">Apply to Paperless?</h2>
+        <p id="confirm-description"></p>
+        <div class="actions">
+          <button class="secondary" value="cancel">Cancel</button
+          ><button class="primary" value="confirm">Continue</button>
+        </div>
+      </form>
+    </dialog>
+  </body>
+</html>

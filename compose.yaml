@@ -6,9 +6,12 @@ services:
     init: true
     restart: unless-stopped
     environment:
-      BRIDGE_HOST: ${BRIDGE_HOST:?Set BRIDGE_HOST to the bridge hostname or IP}
+      BRIDGE_HOST: ${BRIDGE_HOST:-localhost}
+      BRIDGE_PORT: ${BRIDGE_PORT:-1993}
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://localhost:8443}
     ports:
       - "${BRIDGE_BIND_IP:-127.0.0.1}:${BRIDGE_PORT:-1993}:1993"
+      - "${WEB_BIND_IP:-127.0.0.1}:${WEB_PORT:-8443}:8443"
     volumes:
       - bridge-data:/data
     read_only: true

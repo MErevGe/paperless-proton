@@ -1,6 +1,7 @@
 [tool.ruff]
 target-version = "py314"
 line-length = 100
+extend-exclude = ["bridge_container/generated"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -9,10 +10,17 @@ select = ["E", "F", "I", "UP", "B"]
 python_version = "3.14"
 strict = true
 files = ["bridge_container"]
+exclude = ["bridge_container/generated"]
+
+[[tool.mypy.overrides]]
+module = ["grpc", "grpc.*", "google.protobuf.*", "waitress", "bridge_container.generated.*"]
+ignore_missing_imports = true
+follow_imports = "skip"
 
 [tool.coverage.run]
 branch = true
 source = ["bridge_container"]
+omit = ["bridge_container/generated/*"]
 
 [tool.coverage.report]
 show_missing = true

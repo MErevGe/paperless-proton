@@ -1,3 +1,6 @@
+-r requirements.in
 coverage==7.17.5
 mypy==2.4.1
 ruff==0.17.6
+playwright==1.65.2
+grpcio-tools==1.85.4

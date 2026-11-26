@@ -1,0 +1,17 @@
+{
+  "name": "paperless-proton",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "prettier --write bridge_container/static tests/*.mjs eslint.config.mjs package.json",
+    "check": "prettier --check bridge_container/static tests/*.mjs eslint.config.mjs package.json && eslint bridge_container/static/app.js tests/*.mjs eslint.config.mjs",
+    "coverage": "node tests/browser_coverage.mjs"
+  },
+  "devDependencies": {
+    "eslint": "10.15.0",
+    "globals": "17.4.0",
+    "istanbul-lib-coverage": "3.2.2",
+    "prettier": "3.10.1",
+    "v8-to-istanbul": "9.3.0"
+  }
+}

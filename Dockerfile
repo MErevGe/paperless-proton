@@ -32,6 +32,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go test ./internal/certs ./pkg/message ./pkg/mime
 
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS python-deps
+RUN apk add --no-cache python3=3.14.10-r2 py3-pip=26.1.2-r1
+COPY requirements.txt /requirements.txt
+RUN python3 -m venv --without-pip /opt/venv \
+    && pip --python /opt/venv install --no-cache-dir --only-binary=:all: --require-hashes -r /requirements.txt
+
 FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS runtime
 
 ARG SOURCE_URL
@@ -54,8 +60,10 @@ RUN apk add --no-cache \
 COPY --from=build /bridge /usr/local/bin/proton-bridge
 COPY --from=build /src/LICENSE /usr/share/doc/proton-bridge/LICENSE
 COPY --from=build /source.tar.gz /usr/share/doc/proton-bridge/source.tar.gz
+COPY --from=python-deps /opt/venv /opt/venv
 COPY bridge_container /opt/paperless-proton/bridge_container
-ENV GNUPGHOME=/data/gnupg \
+ENV PATH="/opt/venv/bin:$PATH" \
+    GNUPGHOME=/data/gnupg \
     PASSWORD_STORE_DIR=/data/password-store \
     XDG_CONFIG_HOME=/data/config \
     XDG_CACHE_HOME=/data/cache \
@@ -65,7 +73,7 @@ ENV GNUPGHOME=/data/gnupg \
 WORKDIR /opt/paperless-proton
 USER 1000:1000
 VOLUME ["/data"]
-EXPOSE 1993
+EXPOSE 1993 8443
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD ["python3", "-m", "bridge_container", "healthcheck"]
 ENTRYPOINT ["python3", "-m", "bridge_container"]
