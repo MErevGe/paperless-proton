@@ -24,7 +24,8 @@ follow_imports = "skip"
 
 [tool.coverage.run]
 branch = true
-source = ["bridge_container", "ci"]
+relative_files = true
+source_pkgs = ["bridge_container", "ci"]
 omit = ["bridge_container/generated/*"]
 
 [tool.coverage.report]

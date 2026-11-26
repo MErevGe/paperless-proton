@@ -9,6 +9,8 @@
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ed?logo=docker&logoColor=white)](docs/setup.md)
 [![Platforms: linux/amd64 and linux/arm64](https://img.shields.io/badge/Platforms-amd64%20%7C%20arm64-6d4aff)](#requirements)
 
+[![Quality gate](https://sonarcloud.io/api/project_badges/quality_gate?project=MErevGe_paperless-proton&token=9cfdbf0d59d591a3e8329b9dc1f3662f9fece596)](https://sonarcloud.io/summary/new_code?id=MErevGe_paperless-proton)
+
 **Import Proton Mail attachments into Paperless-ngx.**
 
 Save invoices and other email attachments in your existing Paperless-ngx archive. Paperless Proton runs Proton Mail Bridge in Docker and gives you a web interface to connect accounts, choose folders, and configure Paperless imports.

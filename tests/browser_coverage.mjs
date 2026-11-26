@@ -1,6 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import coverage from "istanbul-lib-coverage";
+import libReport from "istanbul-lib-report";
+import reports from "istanbul-reports";
 import v8ToIstanbul from "v8-to-istanbul";
 
 const entries = JSON.parse(
@@ -19,6 +21,12 @@ for (const entry of entries) {
   map.merge(converter.toIstanbul());
 }
 const summary = map.getCoverageSummary().toJSON();
+reports.create("lcovonly", { projectRoot: process.cwd() }).execute(
+  libReport.createContext({
+    dir: ".local/verification",
+    coverageMap: map,
+  }),
+);
 for (const source of sources) {
   const file = path.resolve("bridge_container/static", source);
   if (!map.files().includes(file)) {
