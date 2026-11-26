@@ -359,6 +359,41 @@ def browser_checks(origin: str, password: str) -> None:
             ]
             == 91
         )
+        age.fill("92")
+
+        def unavailable_state(route):
+            route.fulfill(status=503, json={"error": "Status temporarily unavailable"})
+
+        page.route("**/api/state", unavailable_state)
+        with page.expect_response("**/api/paperless/save") as saved_response:
+            page.get_by_role("button", name="Save settings", exact=True).click()
+        assert saved_response.value.ok
+        expect(page.locator("#profile-status")).to_contain_text("Refreshing this profile")
+        expect(page.locator("#notice")).to_have_text("Status temporarily unavailable")
+        expect(page.get_by_label("Proton account", exact=True)).to_be_disabled()
+        expect(page.get_by_role("button", name="Save settings", exact=True)).to_be_disabled()
+        expect(age).to_be_disabled()
+        expect(age).to_have_value("92")
+        expect(page.get_by_label("API token", exact=True)).to_have_value("")
+        page.get_by_role("link", name="Proton account", exact=False).click()
+        page.get_by_role("button", name="Configure Paperless", exact=True).first.click()
+        expect(page.locator("#notice")).to_contain_text("Wait for the saved profile to refresh")
+        page.get_by_role("link", name="Paperless setup", exact=False).click()
+        page.unroute("**/api/state", unavailable_state)
+        expect(page.get_by_label("Proton account", exact=True)).to_be_enabled(timeout=10000)
+        expect(age).to_be_enabled()
+        expect(page.locator("#profile-status")).to_contain_text("Settings saved")
+        page.get_by_label("Proton account", exact=True).select_option("test-account")
+        page.get_by_label("Proton account", exact=True).select_option("second-account")
+        expect(age).to_have_value("92")
+        page.get_by_role("button", name="Save settings", exact=True).click()
+        expect(page.get_by_role("button", name="Save settings", exact=True)).to_be_enabled()
+        assert (
+            context.request.get(origin + "/api/state").json()["profiles"]["second-account"][
+                "maximum_age"
+            ]
+            == 92
+        )
         page.get_by_label("API token", exact=True).fill("unsaved-token-to-discard")
         page.get_by_label("Proton account", exact=True).select_option("test-account")
         page.get_by_role("dialog").get_by_role("button", name="Continue").click()

@@ -7,12 +7,14 @@ let initialized = false;
 let accountSignature = "";
 let noticeTimer;
 let polling = null;
+let stateRevision = 0;
 let folderAccount = null;
 let folderRequest = 0;
 let foldersReady = false;
 let activeProfile = "";
 let profileDirty = false;
 let profileBusy = false;
+let profileSyncPending = false;
 let profileSignature = "";
 
 function notice(message, error = false) {
@@ -81,6 +83,9 @@ function showGate() {
   foldersReady = false;
   activeProfile = "";
   profileDirty = false;
+  profileSyncPending = false;
+  stateRevision += 1;
+  updateProfileControls();
   clearSecrets();
   $("#admin-form").hidden = false;
   $("#gate").hidden = false;
@@ -239,13 +244,15 @@ function renderProfileStatus() {
   const profile = currentProfile();
   $("#profile-status").textContent = !activeProfile
     ? "Connect a Proton account to create its import profile."
-    : profileDirty
-      ? "Unsaved changes in this profile."
-      : profile.applied
-        ? "Applied to Paperless. Each account has its own import rule."
-        : profile.paperless_url
-          ? "Settings saved. Test and apply this profile to Paperless."
-          : "New profile. Enter this account's Paperless token and folders.";
+    : profileSyncPending
+      ? "Settings saved. Refreshing this profile…"
+      : profileDirty
+        ? "Unsaved changes in this profile."
+        : profile.applied
+          ? "Applied to Paperless. Each account has its own import rule."
+          : profile.paperless_url
+            ? "Settings saved. Test and apply this profile to Paperless."
+            : "New profile. Enter this account's Paperless token and folders.";
   $("#token-status").textContent = profile.token_saved
     ? "API token saved securely for this profile. Leave the field blank to keep it."
     : "No API token saved for this profile.";
@@ -337,6 +344,8 @@ function fillProfile() {
 }
 
 async function selectProfile(id) {
+  if (profileSyncPending)
+    throw new Error("Wait for the saved profile to refresh before switching.");
   if (profileBusy)
     throw new Error("Wait for the current profile operation to finish.");
   if (id === activeProfile) return true;
@@ -466,9 +475,16 @@ async function refresh(fresh = false) {
     await Promise.allSettled([polling]);
     return refresh(true);
   }
+  const revision = stateRevision;
   polling = request("state");
   try {
-    state = await polling;
+    const result = await polling;
+    if (revision !== stateRevision) return;
+    state = result;
+    if (profileSyncPending) {
+      profileSyncPending = false;
+      profileDirty = false;
+    }
     $("#service-badge").textContent = state.ready
       ? "Bridge running"
       : "Bridge starting";
@@ -490,6 +506,7 @@ async function refresh(fresh = false) {
     renderAccounts(state.accounts);
     renderLogin(state.login);
     renderProfileChoices();
+    updateProfileControls();
     if (!initialized) {
       $("#bridge-host").value = state.settings.host;
       $("#bridge-port").value = state.settings.port;
@@ -581,8 +598,7 @@ async function paperlessAction(action, button) {
     payload.allow_http = $("#allow-http").checked;
     payload.maximum_age = Number(payload.maximum_age);
     profileBusy = true;
-    $("#profile-fields").disabled = true;
-    $("#profile-account").disabled = true;
+    updateProfileControls();
     try {
       if (
         action === "apply" &&
@@ -594,7 +610,7 @@ async function paperlessAction(action, button) {
         return;
       await request("paperless/save", payload);
       $("#paperless-token").value = "";
-      await refresh(true);
+      await refreshSavedProfile();
       profileDirty = false;
       renderProfileStatus();
       if (action === "save") {
@@ -606,17 +622,30 @@ async function paperlessAction(action, button) {
       try {
         const result = await request(`paperless/${action}`, { proton_id: id });
         $("#paperless-result").textContent = result.message;
-        await refresh(true);
+        await refreshSavedProfile();
       } catch (error) {
         $("#paperless-result").textContent = error.message;
         throw error;
       }
     } finally {
       profileBusy = false;
-      $("#profile-fields").disabled = false;
-      $("#profile-account").disabled = false;
+      updateProfileControls();
     }
   });
+}
+
+function updateProfileControls() {
+  const disabled = profileBusy || profileSyncPending;
+  $("#profile-fields").disabled = disabled;
+  $("#profile-account").disabled = disabled;
+}
+
+async function refreshSavedProfile() {
+  profileSyncPending = true;
+  stateRevision += 1;
+  updateProfileControls();
+  renderProfileStatus();
+  await refresh(true);
 }
 
 $("#paperless-form").addEventListener("submit", (event) => {
