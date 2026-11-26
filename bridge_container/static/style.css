@@ -7,13 +7,65 @@
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  color: #203b39;
-  background: #f5f7f4;
+  color-scheme: light;
+  color: var(--ink);
+  background: var(--background);
   font-synthesis: none;
-  --green: #235e51;
-  --muted: #657771;
-  --line: #dfe7e1;
-  --ink: #203b39;
+  --background: #f6f5fa;
+  --surface: #ffffff;
+  --sidebar: #eeebf5;
+  --topbar: #fcfbfe;
+  --ink: #000000;
+  --brand-text: #000000;
+  --muted: #685f76;
+  --line: #ded9e9;
+  --accent: #6d4aff;
+  --accent-hover: #5936e8;
+  --link: #5832d4;
+  --on-accent: #ffffff;
+  --soft: #efebfa;
+  --active: #e3dafb;
+  --input-border: #b9b0ca;
+  --focus: #9f85ff;
+  --focus-ring: #6d4aff26;
+  --success: #28634b;
+  --success-bg: #e9f4ed;
+  --success-border: #b5d8c3;
+  --error: #a52c43;
+  --error-bg: #8a243a;
+  --notice-bg: #41305e;
+  --shadow: #21153b0a;
+  --dialog-shadow: #10092140;
+  --backdrop: #110b256b;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #17131f;
+  --surface: #211b2c;
+  --sidebar: #1b1527;
+  --topbar: #1c1726;
+  --ink: #ffffff;
+  --brand-text: #ffffff;
+  --muted: #b8afca;
+  --line: #3b324c;
+  --accent: #a88aff;
+  --accent-hover: #bea6ff;
+  --link: #baa0ff;
+  --on-accent: #1b102e;
+  --soft: #30263f;
+  --active: #3c2b58;
+  --input-border: #655577;
+  --focus: #c0a6ff;
+  --focus-ring: #a88aff33;
+  --success: #9cd8b8;
+  --success-bg: #1e342c;
+  --success-border: #3e6954;
+  --error: #ffacb8;
+  --error-bg: #84273e;
+  --notice-bg: #4d356f;
+  --shadow: #00000020;
+  --dialog-shadow: #00000066;
+  --backdrop: #08050f99;
 }
 * {
   box-sizing: border-box;
@@ -27,7 +79,7 @@ body {
   line-height: 1.6;
 }
 a {
-  color: var(--green);
+  color: var(--link);
   text-decoration: none;
 }
 button,
@@ -54,20 +106,20 @@ button:disabled {
   cursor: wait;
 }
 .primary {
-  background: var(--green);
-  color: white;
-  box-shadow: 0 2px 3px #103d1e15;
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 2px 3px var(--shadow);
 }
 .primary:hover {
-  background: #184c40;
+  background: var(--accent-hover);
 }
 .secondary {
-  background: #fff;
-  border-color: #c9d8d0;
+  background: var(--surface);
+  border-color: var(--input-border);
   color: var(--ink);
 }
 .secondary:hover {
-  background: #f0f5f1;
+  background: var(--soft);
 }
 .quiet {
   background: transparent;
@@ -75,12 +127,12 @@ button:disabled {
   padding: 8px 12px;
 }
 .quiet:hover {
-  background: #e9efea;
+  background: var(--soft);
 }
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible {
-  outline: 3px solid #80b4a4;
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 h1,
@@ -120,34 +172,53 @@ p {
   margin-bottom: 12px;
 }
 .brand {
-  font-size: 16px;
-  line-height: 1.25;
-  font-weight: 500;
   display: flex;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-  color: var(--ink);
-}
-.brand strong {
-  font-weight: 650;
+  width: 100%;
+  max-width: 330px;
 }
 .brand-icon {
-  width: 36px;
-  height: 40px;
-  background: var(--green);
-  color: #fff;
-  border-radius: 10px 10px 10px 2px;
-  display: grid;
-  place-content: center;
-  font-size: 28px;
-  font-weight: 400;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 auto;
+}
+.brand-wordmark {
+  flex: 1;
+  aspect-ratio: 1509 / 212;
+  background: var(--brand-text);
+  mask: url("/wordmark.svg") center / contain no-repeat;
+}
+.theme-picker {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.theme-picker select {
+  width: auto;
+  min-height: 36px;
+  padding: 6px 28px 6px 10px;
+  font-size: 12px;
+}
+.gate-theme {
+  justify-content: flex-end;
+  margin-bottom: 26px;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 .card {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 28px;
-  box-shadow: 0 3px 6px #18372703;
+  box-shadow: 0 3px 6px var(--shadow);
 }
 .gate {
   max-width: 450px;
@@ -156,7 +227,7 @@ p {
 }
 .gate > .brand {
   justify-content: center;
-  margin: 0 0 36px;
+  margin: 0 auto 28px;
 }
 .auth-card {
   padding: 32px;
@@ -180,20 +251,23 @@ p {
   width: 238px;
   position: fixed;
   inset: 0 auto 0 0;
-  background: #edf2ed;
+  background: var(--sidebar);
   border-right: 1px solid var(--line);
   padding: 36px 22px;
   display: flex;
   flex-direction: column;
 }
 .sidebar > .brand {
-  padding: 0 12px;
-  margin-bottom: 56px;
+  margin-bottom: 48px;
+}
+.sidebar .brand-icon {
+  width: 44px;
+  height: 44px;
 }
 .nav-heading {
   font-size: 10px;
   letter-spacing: 1.7px;
-  color: #82928b;
+  color: var(--muted);
   padding: 0 13px;
   margin-bottom: 15px;
 }
@@ -204,7 +278,7 @@ nav {
 nav a {
   padding: 11px 13px;
   border-radius: 7px;
-  color: #61776e;
+  color: var(--muted);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -212,11 +286,11 @@ nav a {
   font-size: 13px;
 }
 nav a:hover {
-  background: #e2ebe3;
+  background: var(--soft);
 }
 nav a[aria-current="page"] {
-  background: #dce9df;
-  color: #1d5949;
+  background: var(--active);
+  color: var(--link);
   font-weight: 650;
 }
 nav a > span {
@@ -227,17 +301,17 @@ nav a > span {
 }
 .nav-number {
   font-size: 10px !important;
-  border: 1px solid #a3b9ab;
+  border: 1px solid var(--input-border);
   border-radius: 5px;
 }
 .sidebar-footer {
   margin-top: auto;
   padding: 20px 12px 0;
   font-size: 11px;
-  color: #4e7061;
+  color: var(--success);
 }
 .sidebar-footer small {
-  color: #87958d;
+  color: var(--muted);
   display: block;
   font-size: 10px;
   margin-top: 5px;
@@ -247,7 +321,7 @@ nav a > span {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #4d9572;
+  background: var(--success);
   margin-right: 7px;
 }
 .main-column {
@@ -262,8 +336,8 @@ nav a > span {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: #fbfcfa;
-  color: #7b8b83;
+  background: var(--topbar);
+  color: var(--muted);
   font-size: 12px;
 }
 .topbar button {
@@ -289,9 +363,9 @@ nav a > span {
 .badge {
   font-size: 11px;
   white-space: nowrap;
-  background: #e4eee4;
-  border: 1px solid #cadfcf;
-  color: #3f7655;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  color: var(--success);
   border-radius: 20px;
   padding: 5px 12px;
   margin-top: 6px;
@@ -330,12 +404,12 @@ nav a > span {
   align-items: center;
   gap: 22px;
   padding: 22px 0;
-  border-top: 1px solid #edf0ec;
+  border-top: 1px solid var(--line);
 }
 .step-number {
   font-size: 13px;
-  color: #719185;
-  background: #f0f5f0;
+  color: var(--link);
+  background: var(--soft);
   min-width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -383,35 +457,36 @@ select,
 textarea {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #cbd8ce;
+  border: 1px solid var(--input-border);
   border-radius: 7px;
   color: var(--ink);
-  background: #fff;
+  background: var(--surface);
   outline: none;
+  accent-color: var(--accent);
   min-height: 42px;
 }
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: #518a74;
-  box-shadow: 0 0 0 3px #c9dfcf6b;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 input[readonly] {
-  background: #f6f8f5;
-  color: #63796c;
+  background: var(--soft);
+  color: var(--muted);
 }
 form > button {
   margin-top: 22px;
 }
 .hint {
   font-size: 11px !important;
-  color: #7b8a80;
+  color: var(--muted);
   line-height: 1.6;
   margin: 8px 0 16px;
 }
 .command {
   font-size: 11px;
-  background: #f1f5ef;
+  background: var(--soft);
   display: block;
   padding: 12px;
   overflow-wrap: anywhere;
@@ -443,13 +518,13 @@ form > button {
 pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: #f2f6ef;
-  border: 1px solid #e3ebdf;
+  background: var(--soft);
+  border: 1px solid var(--line);
   padding: 16px;
   border-radius: 8px;
   font-size: 11px;
   line-height: 1.8;
-  color: #53705d;
+  color: var(--muted);
 }
 code {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -462,7 +537,7 @@ details {
 summary {
   cursor: pointer;
   font-size: 12px;
-  color: var(--green);
+  color: var(--link);
   font-weight: 600;
 }
 .checkbox {
@@ -484,31 +559,31 @@ summary {
   z-index: 10;
   right: 24px;
   top: 20px;
-  background: #244d3f;
+  background: var(--notice-bg);
   color: #fff;
   padding: 14px 20px;
   border-radius: 9px;
-  box-shadow: 0 8px 30px #17382c20;
+  box-shadow: 0 8px 30px var(--shadow);
   max-width: min(520px, calc(100vw - 32px));
   font-size: 13px;
 }
 .notice.error {
-  background: #833d36;
+  background: var(--error-bg);
   color: #fff;
 }
 .error {
-  color: #9b483d;
+  color: var(--error);
   font-size: 12px;
   margin-top: 12px;
 }
 .callout {
-  border: 1px solid #cbdcc9;
-  background: #ecf3e9;
+  border: 1px solid var(--success-border);
+  background: var(--success-bg);
   padding: 15px 20px;
   border-radius: 8px;
   font-size: 12px;
   margin: 20px 0 0;
-  color: #476847;
+  color: var(--success);
 }
 .page-footer {
   display: flex;
@@ -517,7 +592,7 @@ summary {
   padding: 22px 48px;
   border-top: 1px solid var(--line);
   font-size: 10px;
-  color: #8a988e;
+  color: var(--muted);
 }
 .account-item {
   padding: 18px 0;
@@ -556,7 +631,7 @@ summary {
 #login-progress {
   border-radius: 8px;
   padding: 18px;
-  background: #eff5ee;
+  background: var(--soft);
   margin: 20px 0;
 }
 dialog {
@@ -566,10 +641,11 @@ dialog {
   max-width: 440px;
   width: calc(100% - 32px);
   color: var(--ink);
-  box-shadow: 0 20px 80px #14382b35;
+  background: var(--surface);
+  box-shadow: 0 20px 80px var(--dialog-shadow);
 }
 dialog::backdrop {
-  background: #152f2860;
+  background: var(--backdrop);
 }
 dialog p {
   font-size: 13px;
@@ -635,11 +711,20 @@ dialog .actions {
     margin: 0 0 20px;
     padding: 0;
   }
-  .sidebar > .brand br {
+  .sidebar > .brand {
+    max-width: 270px;
+  }
+  .sidebar .brand-icon {
+    width: 60px;
+    height: 60px;
+  }
+  .workspace-label {
     display: none;
   }
-  .sidebar > .brand strong:before {
-    content: " ";
+  .topbar-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
   }
   .nav-heading,
   .sidebar-footer {

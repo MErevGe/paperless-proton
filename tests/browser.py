@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 
+from browser_theme import storage_disabled_checks, theme_checks
 from playwright.sync_api import expect, sync_playwright
 
 
@@ -20,7 +21,9 @@ def browser_checks(origin: str, password: str) -> None:
         cdp = context.new_cdp_session(page)
         cdp.send("Profiler.enable")
         cdp.send("Profiler.startPreciseCoverage", {"callCount": True, "detailed": True})
-        page.goto(origin)
+        output = Path(".local/verification")
+        output.mkdir(parents=True, exist_ok=True)
+        theme_coverage = theme_checks(page, context, origin, output, cdp)
         page.get_by_label("Admin password", exact=True).fill("incorrect-password")
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.locator("#notice")).to_contain_text("Invalid password")
@@ -28,8 +31,13 @@ def browser_checks(origin: str, password: str) -> None:
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.get_by_role("heading", name="From inbox to archive.")).to_be_visible()
         expect(page.locator("#service-badge")).to_have_text("Bridge running", timeout=30000)
-        output = Path(".local/verification")
-        output.mkdir(parents=True, exist_ok=True)
+        expect(page.locator("#workspace-theme")).to_have_value("dark")
+        page.screenshot(path=str(output / "web-overview-dark.png"), full_page=True)
+        page.locator("#workspace-theme").select_option("light")
+        expect(page.locator("html")).to_have_attribute("data-theme", "light")
+        expect(page.locator(".sidebar .brand-wordmark")).to_have_css(
+            "background-color", "rgb(0, 0, 0)"
+        )
         page.screenshot(path=str(output / "web-overview.png"), full_page=True)
         page.get_by_role("link", name="Bridge connection", exact=False).click()
         page.get_by_label("Hostname or IP address").fill("mail.example.test")
@@ -280,16 +288,19 @@ def browser_checks(origin: str, password: str) -> None:
         fixture["ready"] = True
         expect(page.locator("#service-badge")).to_have_text("Bridge running", timeout=10000)
         page.screenshot(path=str(output / "web-paperless.png"), full_page=True)
+        page.locator("#workspace-theme").select_option("dark")
         page.set_viewport_size({"width": 390, "height": 844})
         for section in ("overview", "proton", "connection", "paperless", "security"):
             page.goto(origin + "/#" + section)
             expect(page.locator("#" + section)).to_be_visible()
+            expect(page.locator("html")).to_have_attribute("data-theme", "dark")
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
         page.screenshot(path=str(output / "web-mobile.png"), full_page=True)
         page.get_by_label("Current password", exact=True).fill(password)
         page.get_by_label("New password", exact=True).fill(password + "-changed")
         page.get_by_role("button", name="Change password", exact=True).click()
         expect(page.locator("#gate")).to_be_visible()
+        expect(page.locator("#gate-theme")).to_have_value("dark")
         page.get_by_label("Admin password", exact=True).fill(password + "-changed")
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.locator("#workspace")).to_be_visible()
@@ -302,7 +313,7 @@ def browser_checks(origin: str, password: str) -> None:
             ),
         )
         page.route("**/api/setup", lambda route: route.fulfill(json={"csrf": "test-csrf"}))
-        coverage = cdp.send("Profiler.takePreciseCoverage")["result"]
+        coverage = theme_coverage + cdp.send("Profiler.takePreciseCoverage")["result"]
         page.reload()
         expect(page.get_by_role("heading", name="Make yourself at home.")).to_be_visible()
         page.get_by_label("Setup token", exact=True).fill("test-setup-token")
@@ -310,13 +321,16 @@ def browser_checks(origin: str, password: str) -> None:
         page.get_by_role("button", name="Create workspace").click()
         expect(page.locator("#workspace")).to_be_visible()
         coverage += cdp.send("Profiler.takePreciseCoverage")["result"]
+        coverage += storage_disabled_checks(browser, origin)
         (output / "browser-coverage.json").write_text(
-            json.dumps([item for item in coverage if item["url"].endswith("/app.js")])
+            json.dumps(
+                [item for item in coverage if item["url"].endswith(("/app.js", "/theme.js"))]
+            )
         )
         assert not errors, errors
         context.close()
         browser.close()
         print(
             "Passed: browser setup flows, secret clearing, forms, confirmation, "
-            "mobile layout, password rotation"
+            "mobile layout, password rotation, themes and logo contrast"
         )

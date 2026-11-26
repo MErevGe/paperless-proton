@@ -56,7 +56,7 @@ class WebTests(unittest.TestCase):
         self.csrf = result["csrf"]
 
     def test_public_shell_and_authenticated_state_and_certificate(self):
-        for path in ("/", "/app.js", "/style.css"):
+        for path in ("/", "/app.js", "/theme.js", "/style.css", "/icon.svg", "/wordmark.svg"):
             code, _, headers = self.request(path)
             self.assertEqual(code, 200)
             self.assertEqual(headers["Cache-Control"], "no-store")

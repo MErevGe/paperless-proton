@@ -67,6 +67,8 @@ docker compose exec bridge python3 -m bridge_container web-setup-token
 
 Enter the token in the web interface and choose an admin password with at least 12 characters. The token stops working once setup is complete. This admin password is separate from your Proton password.
 
+Use **Appearance** to choose **Light**, **Dark** or **System**. Your browser remembers the choice. **System** follows your device's appearance, and the logo lettering switches between black and white automatically.
+
 ### Opening the interface from another computer
 
 You can keep the web port private and use an SSH tunnel:

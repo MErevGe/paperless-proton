@@ -20,8 +20,10 @@ from bridge_container.web_auth import Auth, session_cookie
 STATIC = Path(__file__).parent / "static"
 ASSETS = {
     "/icon.svg": ("icon.svg", "image/svg+xml"),
+    "/wordmark.svg": ("wordmark.svg", "image/svg+xml"),
     "/": ("index.html", "text/html; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/theme.js": ("theme.js", "text/javascript; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
 }
 

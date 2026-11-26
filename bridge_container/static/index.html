@@ -3,9 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
     <title>Paperless Proton</title>
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <script src="/theme.js"></script>
     <link rel="stylesheet" href="/style.css" />
     <script type="module" src="/app.js"></script>
   </head>
@@ -18,8 +19,17 @@
       hidden
     ></div>
     <main id="gate" class="gate">
-      <div class="brand">
-        <span class="brand-icon" aria-hidden="true">↗</span> Paperless Proton
+      <label class="theme-picker gate-theme" for="gate-theme">
+        Appearance
+        <select id="gate-theme" data-theme-select>
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+      <div class="brand" role="img" aria-label="Paperless Proton">
+        <img class="brand-icon" src="/icon.svg" alt="" width="64" height="64" />
+        <span class="brand-wordmark" aria-hidden="true"></span>
       </div>
       <section class="card auth-card">
         <span class="eyebrow">YOUR MAIL. YOUR DOCUMENTS.</span>
@@ -62,10 +72,20 @@
     </main>
     <div id="workspace" class="workspace" hidden>
       <aside class="sidebar">
-        <a href="#overview" class="brand"
-          ><span class="brand-icon" aria-hidden="true">↗</span
-          ><span>Paperless<br /><strong>Proton</strong></span></a
+        <a
+          href="#overview"
+          class="brand"
+          aria-label="Paperless Proton overview"
         >
+          <img
+            class="brand-icon"
+            src="/icon.svg"
+            alt=""
+            width="64"
+            height="64"
+          />
+          <span class="brand-wordmark" aria-hidden="true"></span>
+        </a>
         <span class="nav-heading">WORKSPACE</span>
         <nav aria-label="Main navigation">
           <a href="#overview" data-page="overview"
@@ -92,8 +112,18 @@
       </aside>
       <div class="main-column">
         <header class="topbar">
-          <span>Connection workspace</span
-          ><button id="sign-out" class="quiet">Sign out ↗</button>
+          <span class="workspace-label">Connection workspace</span>
+          <div class="topbar-actions">
+            <label class="theme-picker" for="workspace-theme">
+              Appearance
+              <select id="workspace-theme" data-theme-select>
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <button id="sign-out" class="quiet">Sign out ↗</button>
+          </div>
         </header>
         <main class="content">
           <section id="overview" class="page">
