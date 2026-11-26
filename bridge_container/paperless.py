@@ -278,7 +278,7 @@ class Paperless:
                     "Check its owner and permissions in Paperless. An administrator can "
                     "reconnect this setup if the account or rule was deleted."
                 ) from None
-            changes = {key: None}
+            changes: dict[str, Any] = {key: None, "applied": False}
             if key == "account_id":
                 changes["rule_id"] = None
             self.settings.save(changes)

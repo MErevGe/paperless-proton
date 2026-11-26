@@ -315,7 +315,9 @@ class PaperlessTests(unittest.TestCase):
             request.assert_not_called()
 
     def test_superuser_recovers_deleted_account_without_creating_during_test(self):
-        self.settings.save(self.payload | {"account_id": 7, "rule_id": 9})
+        self.settings.save(
+            self.payload | {"account_id": 7, "rule_id": 9, "applied": True, "linked_user_id": 3}
+        )
         identity = {"user": self.user | {"is_superuser": True}}
         with patch.object(self.paperless, "request") as request:
             request.side_effect = [
@@ -327,6 +329,8 @@ class PaperlessTests(unittest.TestCase):
             self.paperless.test()
             self.assertIsNone(self.settings.value["account_id"])
             self.assertIsNone(self.settings.value["rule_id"])
+            self.assertFalse(self.settings.value["applied"])
+            self.assertEqual(self.settings.value["linked_user_id"], 3)
             self.assertEqual(request.call_args.args[:2], ("POST", "mail_accounts/test/"))
             self.assertNotIn("id", request.call_args.args[2])
             self.assertEqual(request.call_count, 4)
@@ -334,9 +338,12 @@ class PaperlessTests(unittest.TestCase):
             self.paperless.apply()
             self.assertEqual(self.settings.value["account_id"], 8)
             self.assertEqual(self.settings.value["rule_id"], 10)
+            self.assertTrue(self.settings.value["applied"])
 
     def test_superuser_recovers_deleted_rule_without_duplicating_account(self):
-        self.settings.save(self.payload | {"account_id": 7, "rule_id": 9})
+        self.settings.save(
+            self.payload | {"account_id": 7, "rule_id": 9, "applied": True, "linked_user_id": 3}
+        )
         with patch.object(self.paperless, "request") as request:
             request.side_effect = [
                 {"user": self.user | {"is_superuser": True}},
@@ -344,12 +351,24 @@ class PaperlessTests(unittest.TestCase):
                 {"id": 7, "owner": 3},
                 PaperlessError(404, "mail_rules/9/", b""),
                 {"success": True},
+            ]
+            self.paperless.test()
+            self.assertEqual(self.settings.value["account_id"], 7)
+            self.assertIsNone(self.settings.value["rule_id"])
+            self.assertFalse(self.settings.value["applied"])
+            self.assertEqual(self.settings.value["linked_user_id"], 3)
+            request.side_effect = [
+                {"user": self.user | {"is_superuser": True}},
+                {},
+                {"id": 7, "owner": 3},
+                {"success": True},
                 {},
                 {"id": 10},
             ]
             self.paperless.apply()
             self.assertEqual(self.settings.value["account_id"], 7)
             self.assertEqual(self.settings.value["rule_id"], 10)
+            self.assertTrue(self.settings.value["applied"])
             self.assertEqual(request.call_args.args[:2], ("POST", "mail_rules/"))
             self.assertEqual(request.call_args_list[-2].args[:2], ("PATCH", "mail_accounts/7/"))
 
