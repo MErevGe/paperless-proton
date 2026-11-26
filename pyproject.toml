@@ -14,7 +14,7 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
-files = ["bridge_container"]
+files = ["bridge_container", "ci"]
 exclude = ["bridge_container/generated"]
 
 [[tool.mypy.overrides]]
@@ -24,7 +24,7 @@ follow_imports = "skip"
 
 [tool.coverage.run]
 branch = true
-source = ["bridge_container"]
+source = ["bridge_container", "ci"]
 omit = ["bridge_container/generated/*"]
 
 [tool.coverage.report]
