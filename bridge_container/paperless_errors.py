@@ -67,6 +67,11 @@ class PaperlessError(ValueError):
         }
         if status == 400:
             message = bad_request_message(endpoint, data)
+        elif status == 403 and endpoint == "ui_settings/":
+            message = (
+                "The API token's user needs permission to view UI settings in Paperless "
+                "so the app can verify who will own imported documents."
+            )
         elif 300 <= status < 400:
             message = (
                 "Paperless redirected the request. Enter its final URL, including "

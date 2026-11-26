@@ -5,6 +5,16 @@ from bridge_container.paperless_errors import PaperlessError
 
 
 class PaperlessErrorTests(unittest.TestCase):
+    def test_identity_permission_error_names_the_required_permission(self):
+        message = str(PaperlessError(403, "ui_settings/", b"private upstream response"))
+        self.assertIn("permission to view UI settings", message)
+        self.assertIn("HTTP 403", message)
+        self.assertNotIn("private upstream response", message)
+        self.assertIn(
+            "manage mail accounts and rules",
+            str(PaperlessError(403, "mail_accounts/", b"private upstream response")),
+        )
+
     def test_validation_errors_identify_fields_without_exposing_upstream_values(self):
         for endpoint, body, expected in (
             ("mail_rules/1/", {"maximum_age": ["private-value"]}, "0 to 32767"),
