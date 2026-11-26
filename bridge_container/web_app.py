@@ -12,6 +12,7 @@ import grpc
 
 from bridge_container.bridge_api import BridgeAPI
 from bridge_container.certificates import subject_alt_name
+from bridge_container.import_profiles import PROFILE_DEFAULTS, ImportProfiles
 from bridge_container.mail_folders import list_folders
 from bridge_container.paperless import Paperless
 from bridge_container.settings import Settings, text_field, web_origin
@@ -34,7 +35,7 @@ class WebApp:
         self.auth = Auth(data)
         self.settings = Settings(data)
         self.bridge = bridge
-        self.paperless = Paperless(self.settings, bridge)
+        self.profiles = ImportProfiles(self.settings)
         self.origin = web_origin()
         self.lock = threading.RLock()
 
@@ -151,8 +152,9 @@ class WebApp:
             "ready": self.bridge.ready,
             "accounts": self.bridge.accounts() if self.bridge.ready else [],
             "login": self.bridge.status(),
-            "settings": self.settings.value,
-            "paperless_token_saved": self.paperless.token_saved(),
+            "settings": {key: self.settings.value[key] for key in ("host", "port")},
+            "profiles": self.profiles.public(),
+            "profile_defaults": PROFILE_DEFAULTS,
             "active_host": (self.data / "tls/host").read_text().strip(),
         }
 
@@ -181,18 +183,21 @@ class WebApp:
                 "message": "Saved. Restart the container to apply the new hostname and certificate."
             }
         elif path == "/api/paperless/save":
-            self.paperless.save(payload)
+            self.paperless(payload).save(payload)
         elif path == "/api/paperless/test":
             self.check_hostname()
-            self.paperless.test()
+            self.paperless(payload).test()
             return {"message": "Paperless connected to Bridge successfully using SSL/TLS."}
         elif path == "/api/paperless/apply":
             self.check_hostname()
-            self.paperless.apply()
+            self.paperless(payload).apply()
             return {"message": "Email account and import rule saved in Paperless."}
         else:
             raise ValueError("Unknown action")
         return {"message": "Saved"}
+
+    def paperless(self, payload: dict[str, Any]) -> Paperless:
+        return Paperless(self.profiles.get(payload.get("proton_id")), self.bridge)
 
     def check_hostname(self) -> None:
         if (self.data / "tls/host").read_text().strip() != self.settings.value["host"]:

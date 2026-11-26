@@ -1,6 +1,6 @@
 # Paperless Proton
 
-Connect Proton Mail to Paperless-ngx through an encrypted IMAP connection. Use the web interface to sign in to Proton, configure the connection, and create an email account and import rule in Paperless.
+Connect Proton Mail to Paperless-ngx through an encrypted IMAP connection. Use the web interface to sign in to Proton, configure the connection, and create an email account and import rule in Paperless. Each separate Proton account has its own import profile with a Paperless API token and folders.
 
 You need a **paid Proton Mail plan**, Docker with Compose, and an existing Paperless-ngx installation. Images support **amd64** and **arm64**.
 
@@ -113,28 +113,37 @@ volumes:
 
 Recreate Paperless with `docker compose up -d` on its server. A separate worker that fetches email needs the same certificate and environment setting. Keep certificate verification enabled.
 
-## 5. Set up Paperless
+## 5. Set up an import profile for each account
 
-Create `Paperless` and `Processed` folders in Proton Mail.
+This is a central admin interface. Connect each person's separate Proton account under **Proton account**, then configure its own profile under **Paperless setup**. Profiles can use the same Paperless server with different users, or different servers.
 
-Open **Paperless setup** in this app:
+For each Proton account:
 
-1. Enter the Paperless URL, such as `https://paperless.example.internal`.
-2. Copy the API token from your Paperless user profile. The user needs permission to view, add and change email accounts and mail rules.
-3. Choose the connected Proton email address.
-4. Choose the source and destination from the folders loaded from Proton. For example, select `Folders/Paperless` and `Folders/Processed`. After creating or renaming folders in Proton, click **Refresh folders**. The default filename filter imports `*.pdf` attachments.
-5. Click **Test connection**. This checks API access, then asks Paperless to connect to Bridge using SSL/TLS, including certificate verification. The Bridge address must be reachable from Paperless; `localhost` points to the Paperless container itself.
-6. Click **Apply to Paperless** and confirm. The app creates the email account and enables the import rule. Later applications update the account and rule created by this app.
+1. Create source and processed folders in Proton Mail, for example `Paperless` and `Processed`.
+2. Select the **Proton account** at the top of **Paperless setup**.
+3. Enter the Paperless URL, such as `https://paperless.example.internal`, and the API token of the Paperless user who should own the documents. That user needs permission to view UI settings and to view, add and change email accounts and mail rules. Grant document viewing permission so the user can see imported documents.
+4. Choose the Proton email address and give the email account and rule recognizable names. The email account name must be unique on that Paperless server, including accounts owned by other users. Use a different rule name for each profile belonging to the same Paperless user.
+5. Choose the source and destination from the folders loaded from that Proton account. For example, select `Folders/Paperless` and `Folders/Processed`. After creating or renaming folders, click **Refresh folders**. The default filename filter imports `*.pdf` attachments.
+6. Click **Test connection**. Check the displayed **Document owner**. The test verifies the token's user, existing account and rule ownership, and Paperless's SSL/TLS connection to Bridge. The Bridge address must be reachable from Paperless; `localhost` points to the Paperless container itself.
+7. Click **Apply to Paperless** and confirm. The app creates an email account and enabled import rule owned by that Paperless user. The rule assigns new imported documents to the same user. Later applications update this profile's account and rule. Check the permissions of documents already in Paperless separately.
 
-**Maximum email age** accepts 0 to 32767 days. Use 0 to include email of any age. Moving an old email into the source folder does not make it newer. Click **Apply to Paperless** to use a changed age limit; **Save settings** only saves your choices in this app.
+Repeat for the next account. Each profile keeps its own token, folders, filters, age limit and Paperless links. Switching profiles clears the token field; unsaved changes require confirmation before they are discarded. **Save settings** stores the selected profile in this app. **Apply to Paperless** also updates its rule in Paperless.
 
-If you delete the linked account or rule in Paperless, use a superuser API token and click **Test connection**, then **Apply to Paperless** to recreate the setup. Recreated accounts and rules belong to the user whose API token is saved. The app only clears missing links after verifying superuser access. With a regular user, first check the existing account and rule's owner and permissions.
+**Maximum email age** accepts 0 to 32767 days. Use 0 to include email of any age. Moving an old email into the source folder does not make it newer.
 
-The API token is stored in the encrypted password store. After a successful save, its field clears and **API token saved securely** appears. Leave the field empty to keep the saved token, including after a restart. If saving fails, the entered token stays in the field so you can retry. Changing the Paperless URL requires a token again. The app does not adopt unrelated existing email accounts or rules; use distinct names.
+The API tokens are stored separately in the encrypted password store. After a successful save, the field clears and **API token saved securely** appears. Leave it empty to keep that profile's saved token, including after a restart. If saving fails, the entered token stays in the field so you can retry. You can replace a token with another token for the same Paperless user. Changing the Paperless URL requires a token again and creates new links on that server; accounts and rules on the previous server remain there.
 
 If Paperless uses a private HTTPS certificate, paste its CA certificate under **Connection options**. If it only supports HTTP on your trusted LAN or VPN, explicitly enable HTTP there. HTTP sends the API token and Bridge password without transport encryption.
 
-Move an email with a PDF attachment into the source folder. Paperless checks mail every ten minutes by default. Confirm that the document appears in Paperless. A successful connection test does not verify folder names, import filters, or document processing.
+### Who can see the documents?
+
+Use a separate, regular Paperless user for each person's profile. A token belongs to a user; it does not limit that user to one folder. The app checks ownership before updating linked accounts and rules. It refuses a different user's token once a profile has been linked, including a superuser token. For an existing setup without an owner or with the wrong owner, correct the email account and rule's ownership in Paperless before applying the profile.
+
+Paperless superusers can see all documents. Paperless workflows can override ownership or grant access, and shared tags or other objects can reveal metadata. Review your workflows and document permissions in Paperless. The central admin interface and the Bridge server also have access to all connected accounts; profiles do not hide mail from those administrators. See [Paperless permissions](https://docs.paperless-ngx.com/usage/#permissions).
+
+Profiles separate **Proton accounts**. Multiple addresses within one Proton account may share a mailbox; choosing an address does not create isolation between those addresses.
+
+Move an email with a PDF attachment into the source folder. Paperless checks mail every ten minutes by default. Sign in as the intended Paperless user and confirm that the document appears with the correct owner. A successful connection test does not verify document processing or permissions applied by your workflows.
 
 ## Update
 
@@ -147,7 +156,7 @@ docker compose up -d --force-recreate
 
 For a published image, update `BRIDGE_IMAGE` in `.env`, then run `docker compose pull` and `docker compose up -d`.
 
-Accounts, settings and certificates remain in the data volume. Bridge's own automatic updates are disabled; updates come from the container image.
+Accounts, settings and certificates remain in the data volume. When updating from a version with one shared Paperless setup, it is automatically kept as the profile of the previously selected Proton account. Its token, folders and existing Paperless links are preserved. The previous settings are backed up as `web/settings.before-profiles.json` in that volume. Test this profile and check its displayed owner before applying it. Configure the other accounts separately. Bridge's own automatic updates are disabled; updates come from the container image.
 
 ## Admin password and recovery
 
@@ -171,16 +180,18 @@ Use the new token to choose a password. Your Proton accounts and Paperless setti
 - **Bridge is starting:** Wait briefly, then check `docker compose logs --tail=50 bridge` and the server's internet connection.
 - **Paperless connection fails:** Check the bridge hostname, port, DNS and firewall from the Paperless server. Use a LAN or VPN address for both the saved Bridge hostname and `BRIDGE_BIND_IP`; `localhost` and `127.0.0.1` cannot connect two servers. Recent Paperless versions must allow internal mail servers (`PAPERLESS_EMAIL_ALLOW_INTERNAL_HOSTS=true`).
 - **Paperless returns HTTP 500:** Check the Paperless container logs immediately after the test. Confirm the Bridge address is reachable and that the certificate path inside Paperless points to a readable certificate file, not a missing file or directory. Recreate Paperless after changing its mounts or environment.
-- **Proton folders are missing:** Check the selected email address, then click **Refresh folders**. Create folders in Proton Mail first. If a saved folder was deleted or renamed, select its replacement before saving.
+- **Proton folders are missing:** Check the selected account and email address, then click **Refresh folders**. Create folders in Proton Mail first. If a saved folder was deleted or renamed, select its replacement before saving.
 - **Paperless certificate error:** Check the certificate mount and `PAPERLESS_EMAIL_CERTIFICATE_LOCATION`, including any separate mail worker. Restart the bridge after changing its hostname.
 - **Paperless rejects the API token:** Check the token and the user's permissions. Include a path prefix in the Paperless URL if your installation uses one.
+- **A profile belongs to another Paperless user:** Restore the original user's token. A superuser cannot silently take over an existing profile. If the linked account or rule has no owner or a different owner, correct it in Paperless before trying again.
+- **A linked account or rule is missing:** Check its owner and permissions in Paperless. The app only clears deleted links for the profile's original user if that user is a superuser. Restore deleted objects or have an administrator of your Paperless server resolve the setup.
 - **An account was created but the rule failed:** Correct the reported problem and apply again. The saved account is reused. If an object was deleted manually in Paperless, restore it or adjust the setup there.
 - **No documents imported:** Check the Proton folder names, filename filter, maximum email age, and Paperless logs. Custom Proton folders normally start with `Folders/`.
 - **Proton needs another login:** Sign in again under **Proton account**, then apply the Paperless setup again if the Bridge password changed.
 
 ## Back up your data
 
-Back up the `paperless-proton_bridge-data` volume while the container is stopped. It contains your Proton session, encryption keys, API token, settings, certificates and mail cache. Protect it like a password. `docker compose down -v` deletes this data.
+Back up the `paperless-proton_bridge-data` volume while the container is stopped. It contains your Proton session, encryption keys, API tokens, settings, certificates and mail cache. Protect it like a password. `docker compose down -v` deletes this data.
 
 Server certificates renew during startup. Restart the container at least once every eleven months. The public CA certificates stay the same and are valid for ten years. Replacing the data volume also replaces both certificate authorities; trust the new certificates in your browser and in Paperless.
 

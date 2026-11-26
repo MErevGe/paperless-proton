@@ -6,10 +6,16 @@ let state = null;
 let initialized = false;
 let accountSignature = "";
 let noticeTimer;
-let polling = false;
+let polling = null;
+let stateRevision = 0;
 let folderAccount = null;
 let folderRequest = 0;
 let foldersReady = false;
+let activeProfile = "";
+let profileDirty = false;
+let profileBusy = false;
+let profileSyncPending = false;
+let profileSignature = "";
 
 function notice(message, error = false) {
   const node = $("#notice");
@@ -71,9 +77,15 @@ function showGate() {
   csrf = "";
   initialized = false;
   accountSignature = "";
+  profileSignature = "";
   folderAccount = null;
   folderRequest += 1;
   foldersReady = false;
+  activeProfile = "";
+  profileDirty = false;
+  profileSyncPending = false;
+  stateRevision += 1;
+  updateProfileControls();
   clearSecrets();
   $("#admin-form").hidden = false;
   $("#gate").hidden = false;
@@ -144,11 +156,6 @@ function renderAccounts(accounts) {
   accountSignature = signature;
   const parent = $("#accounts");
   parent.replaceChildren();
-  const addressSelect = $("#proton-address");
-  const selected = addressSelect.value;
-  addressSelect.replaceChildren(
-    new Option("Choose a connected email address", ""),
-  );
   if (!accounts.length) {
     const empty = document.createElement("p");
     empty.className = "muted";
@@ -168,10 +175,6 @@ function renderAccounts(accounts) {
     select.setAttribute("aria-label", `Email address for ${account.username}`);
     for (const address of account.addresses) {
       select.add(new Option(address, address));
-      if (account.connected)
-        addressSelect.add(
-          new Option(address, JSON.stringify([account.id, address])),
-        );
     }
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -215,14 +218,161 @@ function renderAccounts(accounts) {
         await refresh();
       }),
     );
-    actions.append(credentials, logout);
+    const configure = document.createElement("button");
+    configure.className = "secondary";
+    configure.textContent = "Configure Paperless";
+    configure.addEventListener("click", () =>
+      busy(configure, async () => {
+        if (await selectProfile(account.id)) location.hash = "paperless";
+      }),
+    );
+    actions.append(configure, credentials, logout);
     item.append(name, status, select, actions);
     parent.append(item);
   }
-  addressSelect.value =
-    selected ||
-    JSON.stringify([state.settings.proton_id, state.settings.address]);
 }
+
+function currentProfile() {
+  return {
+    ...state.profile_defaults,
+    ...state.profiles[activeProfile],
+    proton_id: activeProfile,
+  };
+}
+
+function renderProfileStatus() {
+  const profile = currentProfile();
+  $("#profile-status").textContent = !activeProfile
+    ? "Connect a Proton account to create its import profile."
+    : profileSyncPending
+      ? "Settings saved. Refreshing this profile…"
+      : profileDirty
+        ? "Unsaved changes in this profile."
+        : profile.applied
+          ? "Applied to Paperless. Each account has its own import rule."
+          : profile.paperless_url
+            ? "Settings saved. Test and apply this profile to Paperless."
+            : "New profile. Enter this account's Paperless token and folders.";
+  $("#token-status").textContent = profile.token_saved
+    ? "API token saved securely for this profile. Leave the field blank to keep it."
+    : "No API token saved for this profile.";
+  $("#paperless-token").placeholder = profile.token_saved
+    ? "Saved — enter a new token to replace it"
+    : "Paste this user's Paperless API token";
+  $("#paperless-user").textContent = $("#paperless-token").value
+    ? "Test the connection to verify the entered token’s Paperless user."
+    : profile.paperless_user
+      ? `Document owner: ${profile.paperless_user.username}${profile.paperless_user.is_superuser ? " (superuser)" : ""}.`
+      : "Test the connection to verify the Paperless user who will own imported documents.";
+}
+
+function renderProfileChoices() {
+  const select = $("#profile-account");
+  const ids = new Set([
+    ...state.accounts.map((account) => account.id),
+    ...Object.keys(state.profiles),
+    ...(activeProfile ? [activeProfile] : []),
+  ]);
+  const choices = [...ids].map((id) => {
+    const account = state.accounts.find((item) => item.id === id);
+    const label =
+      account?.username || state.profiles[id]?.address || "Unavailable account";
+    return [id, `${label}${account?.connected ? "" : " — disconnected"}`];
+  });
+  const signature = JSON.stringify(choices);
+  if (signature !== profileSignature) {
+    select.replaceChildren(new Option("Choose a Proton account", ""));
+    for (const [id, label] of choices) select.add(new Option(label, id));
+    profileSignature = signature;
+  }
+  if (!activeProfile) {
+    activeProfile =
+      Object.keys(state.profiles)[0] ||
+      state.accounts.find((account) => account.connected)?.id ||
+      "";
+    fillProfile();
+  }
+  select.value = activeProfile;
+  if (!profileBusy) renderAddressChoices();
+  renderProfileStatus();
+}
+
+function renderAddressChoices(reset = false) {
+  const settings = currentProfile();
+  const account = state.accounts.find((item) => item.id === activeProfile);
+  const addresses =
+    account?.connected || account?.addresses.length
+      ? account.addresses
+      : settings.address
+        ? [settings.address]
+        : [];
+  const select = $("#proton-address");
+  const previous = select.value;
+  const values = addresses.map((address) =>
+    JSON.stringify([activeProfile, address]),
+  );
+  if (
+    JSON.stringify([...select.options].map((option) => option.value)) !==
+    JSON.stringify(["", ...values])
+  ) {
+    select.replaceChildren(new Option("Choose an email address", ""));
+    for (const [index, address] of addresses.entries())
+      select.add(new Option(address, values[index]));
+  }
+  select.value = reset
+    ? JSON.stringify([activeProfile, settings.address || addresses[0]])
+    : previous;
+  if (!reset && previous !== select.value) profileDirty = true;
+}
+
+function fillProfile() {
+  const settings = currentProfile();
+  $("#paperless-token").value = "";
+  $("#paperless-result").hidden = true;
+  for (const input of $("#paperless-form").elements) {
+    if (!input.name || input.name === "token") continue;
+    if (input.type === "checkbox") input.checked = settings[input.name];
+    else input.value = settings[input.name] ?? "";
+  }
+  renderAddressChoices(true);
+  folderAccount = null;
+  folderRequest += 1;
+  foldersReady = false;
+  profileDirty = false;
+  renderProfileStatus();
+  void loadFolders();
+}
+
+async function selectProfile(id) {
+  if (profileSyncPending)
+    throw new Error("Wait for the saved profile to refresh before switching.");
+  if (profileBusy)
+    throw new Error("Wait for the current profile operation to finish.");
+  if (id === activeProfile) return true;
+  if (
+    profileDirty &&
+    !(await confirmAction(
+      "Switch import profile?",
+      "Unsaved settings and the entered token will be discarded.",
+    ))
+  ) {
+    $("#profile-account").value = activeProfile;
+    return false;
+  }
+  activeProfile = id;
+  $("#profile-account").value = id;
+  fillProfile();
+  return true;
+}
+
+$("#profile-account").addEventListener("change", () =>
+  busy($("#profile-account"), () => selectProfile($("#profile-account").value)),
+);
+for (const event of ["input", "change"])
+  $("#paperless-form").addEventListener(event, () => {
+    profileDirty = true;
+    renderProfileStatus();
+  });
 
 function renderLogin(login) {
   const step = login.step;
@@ -254,20 +404,6 @@ function renderLogin(login) {
   else link.removeAttribute("href");
 }
 
-function fillSettings(settings) {
-  $("#bridge-host").value = settings.host;
-  $("#bridge-port").value = settings.port;
-  for (const input of $("#paperless-form").elements) {
-    if (!input.name || input.name === "token") continue;
-    if (input.type === "checkbox") input.checked = settings[input.name];
-    else input.value = settings[input.name] ?? "";
-  }
-  $("#proton-address").value = JSON.stringify([
-    settings.proton_id,
-    settings.address,
-  ]);
-}
-
 async function loadFolders(force = false) {
   const selected = $("#proton-address").value;
   if (!force && selected === folderAccount) return;
@@ -276,15 +412,13 @@ async function loadFolders(force = false) {
   const revision = ++folderRequest;
   foldersReady = false;
   const selects = [$("#source-folder"), $("#destination-folder")];
-  const savedAccount = JSON.stringify([
-    state.settings.proton_id,
-    state.settings.address,
-  ]);
+  const settings = currentProfile();
+  const savedAccount = JSON.stringify([activeProfile, settings.address]);
   const previous = selects.map((input) =>
     sameAccount && input.value
       ? input.value
       : selected === savedAccount
-        ? state.settings[input.name]
+        ? settings[input.name]
         : "",
   );
   for (const input of selects) {
@@ -334,11 +468,23 @@ $("#refresh-folders").addEventListener("click", () =>
   busy($("#refresh-folders"), () => loadFolders(true)),
 );
 
-async function refresh() {
-  if (!authenticated || polling) return;
-  polling = true;
+async function refresh(fresh = false) {
+  if (!authenticated) return;
+  if (polling) {
+    if (!fresh) return;
+    await Promise.allSettled([polling]);
+    return refresh(true);
+  }
+  const revision = stateRevision;
+  polling = request("state");
   try {
-    state = await request("state");
+    const result = await polling;
+    if (revision !== stateRevision) return;
+    state = result;
+    if (profileSyncPending) {
+      profileSyncPending = false;
+      profileDirty = false;
+    }
     $("#service-badge").textContent = state.ready
       ? "Bridge running"
       : "Bridge starting";
@@ -350,30 +496,25 @@ async function refresh() {
       : "No account connected";
     $("#bridge-summary").textContent =
       `${state.active_host}:${state.settings.port}`;
-    $("#paperless-summary").textContent = state.settings.rule_id
-      ? "Import rule configured"
-      : state.settings.paperless_url
-        ? "Ready to test"
-        : "Not configured";
-    $("#paperless-detail").textContent = state.settings.rule_id
-      ? "Confirm your first document in Paperless."
-      : "Connect your document archive.";
+    const profiles = Object.values(state.profiles);
+    const applied = profiles.filter((profile) => profile.applied).length;
+    $("#paperless-summary").textContent =
+      `${profiles.length} import profile${profiles.length === 1 ? "" : "s"}`;
+    $("#paperless-detail").textContent =
+      `${applied} applied to Paperless. Manage each account separately.`;
     $("#restart-notice").hidden = state.active_host === state.settings.host;
-    $("#token-status").textContent = state.paperless_token_saved
-      ? "API token saved securely. Leave the field blank to keep it."
-      : "No API token saved. Enter a token and save the settings.";
-    $("#paperless-token").placeholder = state.paperless_token_saved
-      ? "Saved — enter a new token to replace it"
-      : "Paste your Paperless API token";
     renderAccounts(state.accounts);
     renderLogin(state.login);
+    renderProfileChoices();
+    updateProfileControls();
     if (!initialized) {
-      fillSettings(state.settings);
+      $("#bridge-host").value = state.settings.host;
+      $("#bridge-port").value = state.settings.port;
       initialized = true;
     }
     void loadFolders();
   } finally {
-    polling = false;
+    polling = null;
   }
 }
 
@@ -439,58 +580,81 @@ $("#reveal-password").addEventListener("click", () => {
     input.type === "password" ? "Show password" : "Hide password";
 });
 
-async function savePaperless() {
-  const form = $("#paperless-form");
-  if (!foldersReady) {
-    notice(
-      "Load the Proton folders and choose a source and destination before saving.",
-      true,
-    );
-    return false;
-  }
-  if (!form.reportValidity()) return false;
-  const payload = Object.fromEntries(new FormData(form));
-  const [id, address] = JSON.parse($("#proton-address").value);
-  payload.proton_id = id;
-  payload.address = address;
-  payload.allow_http = $("#allow-http").checked;
-  payload.maximum_age = Number(payload.maximum_age);
-  await request("paperless/save", payload);
-  $("#paperless-token").value = "";
-  await refresh();
-  return true;
-}
-
-$("#paperless-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  busy(event.submitter, async () => {
-    if (await savePaperless()) notice("Paperless settings saved.");
-  });
-});
-for (const action of ["test", "apply"]) {
-  $(`#${action}-paperless`).addEventListener("click", () =>
-    busy($(`#${action}-paperless`), async () => {
-      if (!$("#paperless-form").reportValidity()) return;
+async function paperlessAction(action, button) {
+  await busy(button, async () => {
+    const form = $("#paperless-form");
+    if (!activeProfile || !foldersReady) {
+      notice(
+        "Load the Proton folders and choose a source and destination before saving.",
+        true,
+      );
+      return;
+    }
+    if (!form.reportValidity()) return;
+    const payload = Object.fromEntries(new FormData(form));
+    const [id, address] = JSON.parse($("#proton-address").value);
+    payload.proton_id = id;
+    payload.address = address;
+    payload.allow_http = $("#allow-http").checked;
+    payload.maximum_age = Number(payload.maximum_age);
+    profileBusy = true;
+    updateProfileControls();
+    try {
       if (
         action === "apply" &&
         !(await confirmAction(
-          "Apply to Paperless?",
-          "This will create or update the email account and enable the import rule. Matching attachments will be imported and processed email moved to the destination folder.",
+          "Apply this profile to Paperless?",
+          "This account's matching attachments will be imported for the user identified by its API token. Processed email will be moved to this profile's destination folder.",
         ))
       )
         return;
-      if (!(await savePaperless())) return;
+      await request("paperless/save", payload);
+      $("#paperless-token").value = "";
+      await refreshSavedProfile();
+      profileDirty = false;
+      renderProfileStatus();
+      if (action === "save") {
+        notice("Import profile saved.");
+        return;
+      }
       $("#paperless-result").hidden = false;
       $("#paperless-result").textContent = "Connecting to Paperless…";
       try {
-        const result = await request(`paperless/${action}`, {});
+        const result = await request(`paperless/${action}`, { proton_id: id });
         $("#paperless-result").textContent = result.message;
-        await refresh();
+        await refreshSavedProfile();
       } catch (error) {
         $("#paperless-result").textContent = error.message;
         throw error;
       }
-    }),
+    } finally {
+      profileBusy = false;
+      updateProfileControls();
+    }
+  });
+}
+
+function updateProfileControls() {
+  const disabled = profileBusy || profileSyncPending;
+  $("#profile-fields").disabled = disabled;
+  $("#profile-account").disabled = disabled;
+}
+
+async function refreshSavedProfile() {
+  profileSyncPending = true;
+  stateRevision += 1;
+  updateProfileControls();
+  renderProfileStatus();
+  await refresh(true);
+}
+
+$("#paperless-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  void paperlessAction("save", event.submitter);
+});
+for (const action of ["test", "apply"]) {
+  $(`#${action}-paperless`).addEventListener("click", () =>
+    paperlessAction(action, $(`#${action}-paperless`)),
   );
 }
 
