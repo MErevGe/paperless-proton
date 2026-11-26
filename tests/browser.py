@@ -202,6 +202,65 @@ def browser_checks(origin: str, password: str) -> None:
         assert saved_state["profiles"]["test-account"]["maximum_age"] == 0
         assert "test-paperless-api-token-value" not in json.dumps(saved_state)
         fixture["settings"] = saved_state["settings"]
+        page.get_by_label("Paperless URL").fill("https://draft.example.test")
+        page.get_by_label("API token", exact=True).fill("unsaved-token-during-address-change")
+        age.fill("17")
+        address_select = page.get_by_label("Proton email address")
+        account = fixture["accounts"][0]
+        account["addresses"].append("added@example.test")
+        expect(page.locator("#proton-address option")).to_have_text(
+            ["Choose an email address", "mail@example.test", "added@example.test"],
+            timeout=10000,
+        )
+        expect(address_select).to_have_value(
+            json.dumps(["test-account", "mail@example.test"], separators=(",", ":"))
+        )
+        expect(page.get_by_label("Source folder", exact=True)).to_have_value("Folders/Paperless")
+        account["addresses"] = ["added@example.test"]
+        expect(address_select).to_have_value("", timeout=10000)
+        expect(page.get_by_label("Source folder", exact=True)).to_be_disabled()
+        expect(page.get_by_label("Source folder", exact=True)).to_have_value("")
+        expect(page.get_by_label("Move processed email to", exact=True)).to_have_value("")
+        address_select.select_option(label="added@example.test")
+        expect(page.locator("#folder-status")).to_contain_text("4 folders loaded")
+        account["addresses"] = []
+        expect(page.locator("#proton-address option")).to_have_text(
+            ["Choose an email address"], timeout=10000
+        )
+        expect(address_select).to_have_value("")
+        expect(page.get_by_label("Source folder", exact=True)).to_be_disabled()
+        account["connected"] = False
+        expect(page.locator("#proton-address option")).to_have_text(
+            ["Choose an email address", "mail@example.test"], timeout=10000
+        )
+        account["connected"] = True
+        account["addresses"] = ["mail@example.test", "reconnected@example.test"]
+        expect(page.locator("#proton-address option")).to_have_text(
+            ["Choose an email address", "mail@example.test", "reconnected@example.test"],
+            timeout=10000,
+        )
+        expect(address_select).to_have_value("")
+        expect(page.get_by_label("Paperless URL")).to_have_value("https://draft.example.test")
+        expect(page.get_by_label("API token", exact=True)).to_have_value(
+            "unsaved-token-during-address-change"
+        )
+        expect(age).to_have_value("17")
+        expect(page.locator("#profile-status")).to_contain_text("Unsaved changes")
+        account["addresses"] = ["mail@example.test"]
+        address_select.select_option(label="mail@example.test")
+        expect(page.locator("#folder-status")).to_contain_text("4 folders loaded")
+        expect(page.get_by_label("Source folder", exact=True)).to_have_value("Folders/Paperless")
+        expect(page.get_by_label("Move processed email to", exact=True)).to_have_value(
+            "Folders/Processed"
+        )
+        page.get_by_label("Paperless URL").fill("https://paperless.example.test")
+        page.get_by_label("API token", exact=True).fill("")
+        age.fill("0")
+        page.get_by_role("button", name="Save settings", exact=True).click()
+        expect(page.locator("#profile-status")).to_contain_text("Settings saved")
+        assert (
+            context.request.get(origin + "/api/state").json()["profiles"] == saved_state["profiles"]
+        )
         fixture["accounts"].append(
             {
                 "id": "second-account",

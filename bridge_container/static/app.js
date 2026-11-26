@@ -286,7 +286,36 @@ function renderProfileChoices() {
     fillProfile();
   }
   select.value = activeProfile;
+  if (!profileBusy) renderAddressChoices();
   renderProfileStatus();
+}
+
+function renderAddressChoices(reset = false) {
+  const settings = currentProfile();
+  const account = state.accounts.find((item) => item.id === activeProfile);
+  const addresses =
+    account?.connected || account?.addresses.length
+      ? account.addresses
+      : settings.address
+        ? [settings.address]
+        : [];
+  const select = $("#proton-address");
+  const previous = select.value;
+  const values = addresses.map((address) =>
+    JSON.stringify([activeProfile, address]),
+  );
+  if (
+    JSON.stringify([...select.options].map((option) => option.value)) !==
+    JSON.stringify(["", ...values])
+  ) {
+    select.replaceChildren(new Option("Choose an email address", ""));
+    for (const [index, address] of addresses.entries())
+      select.add(new Option(address, values[index]));
+  }
+  select.value = reset
+    ? JSON.stringify([activeProfile, settings.address || addresses[0]])
+    : previous;
+  if (!reset && previous !== select.value) profileDirty = true;
 }
 
 function fillProfile() {
@@ -298,20 +327,7 @@ function fillProfile() {
     if (input.type === "checkbox") input.checked = settings[input.name];
     else input.value = settings[input.name] ?? "";
   }
-  const account = state.accounts.find((item) => item.id === activeProfile);
-  const addresses = account?.addresses.length
-    ? account.addresses
-    : settings.address
-      ? [settings.address]
-      : [];
-  const select = $("#proton-address");
-  select.replaceChildren(new Option("Choose an email address", ""));
-  for (const address of addresses)
-    select.add(new Option(address, JSON.stringify([activeProfile, address])));
-  select.value = JSON.stringify([
-    activeProfile,
-    settings.address || addresses[0],
-  ]);
+  renderAddressChoices(true);
   folderAccount = null;
   folderRequest += 1;
   foldersReady = false;
