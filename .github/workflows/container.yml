@@ -1,0 +1,203 @@
+name: Container
+
+on:
+  push:
+    branches: [main, 'feature/**', 'fix/**', 'ci/**', 'security/**', 'dependencies/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Install verification tools
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14.10'
+      - name: Install test dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --require-hashes -r requirements-dev.txt
+      - name: Check formatting and types
+        run: |
+          .venv/bin/ruff format --check bridge_container tests
+          .venv/bin/ruff check bridge_container tests
+          .venv/bin/mypy
+      - name: Test with coverage
+        run: |
+          .venv/bin/coverage run -m unittest discover -s tests -v
+          .venv/bin/coverage json -o coverage.json
+          .venv/bin/python tests/check_coverage.py
+      - name: Scan dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.76.2
+          scan-type: fs
+          scan-ref: .
+          skip-dirs: .venv
+          scanners: vuln
+          severity: MEDIUM,HIGH,CRITICAL
+          exit-code: '1'
+      - name: Check workflow syntax and secrets
+        run: |
+          mkdir -p "$RUNNER_TEMP/tools"
+          cd "$RUNNER_TEMP/tools"
+          curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o actionlint.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum --check
+          tar -xzf actionlint.tar.gz actionlint
+          curl --fail --silent --show-error --location https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz -o gitleaks.tar.gz
+          echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz' | sha256sum --check
+          tar -xzf gitleaks.tar.gz gitleaks
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/tools/actionlint"
+          git ls-files -z | tar --null -T - -cf "$RUNNER_TEMP/source.tar"
+          mkdir "$RUNNER_TEMP/source"
+          tar -xf "$RUNNER_TEMP/source.tar" -C "$RUNNER_TEMP/source"
+          "$RUNNER_TEMP/tools/gitleaks" dir --redact "$RUNNER_TEMP/source"
+
+  build:
+    name: Build (${{ matrix.arch }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+        with:
+          version: v0.39.1
+          driver-opts: image=moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          build-args: SOURCE_URL=https://github.com/${{ github.repository }}
+          tags: paperless-proton:test-${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Test container
+        env:
+          IMAGE: paperless-proton:test-${{ matrix.arch }}
+        run: python3 tests/smoke.py "$IMAGE"
+      - name: Test Bridge certificate and email handling
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: docker buildx build --target upstream-tests --platform "linux/$ARCH" .
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.76.2
+          image-ref: paperless-proton:test-${{ matrix.arch }}
+          scanners: vuln
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          format: json
+          output: vulnerabilities-${{ matrix.arch }}.json
+      - name: Enforce vulnerability gate
+        env:
+          REPORT: vulnerabilities-${{ matrix.arch }}.json
+        run: |
+          python3 - <<'PY'
+          import json, os
+          report = json.load(open(os.environ['REPORT']))
+          findings = [item for result in report.get('Results', []) for item in result.get('Vulnerabilities', [])]
+          for item in findings:
+              print(item['Severity'], item['VulnerabilityID'], item['PkgName'], item.get('FixedVersion', 'unfixed'))
+          if any(item['Severity'] in {'MEDIUM', 'HIGH', 'CRITICAL'} for item in findings):
+              raise SystemExit('Image contains blocking vulnerabilities')
+          PY
+      - name: Export tested image
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: docker save "paperless-proton:test-$ARCH" -o "image-$ARCH.tar"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        with:
+          name: image-${{ matrix.arch }}
+          path: image-${{ matrix.arch }}.tar
+          retention-days: 1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: vulnerabilities-${{ matrix.arch }}
+          path: vulnerabilities-${{ matrix.arch }}.json
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: [verify, build]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: image-*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+        with:
+          version: v0.39.1
+          driver-opts: image=moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish tested images
+        env:
+          REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          test "$(gh api "repos/$REPOSITORY" --jq '.private')" = true
+          owner="${REPOSITORY%%/*}"
+          package="${REPOSITORY##*/}"
+          owner_type="$(gh api "repos/$REPOSITORY" --jq '.owner.type')"
+          if [ "$owner_type" = Organization ]; then
+            package_api="orgs/$owner/packages/container/${package,,}"
+          else
+            package_api="users/$owner/packages/container/${package,,}"
+          fi
+          if gh api "$package_api" --jq '.visibility' > "$RUNNER_TEMP/package-visibility" 2> "$RUNNER_TEMP/package-error"; then
+            test "$(cat "$RUNNER_TEMP/package-visibility")" = private
+          else
+            case "$(cat "$RUNNER_TEMP/package-error")" in
+              *'HTTP 404'*) ;;
+              *) cat "$RUNNER_TEMP/package-error" >&2; exit 1 ;;
+            esac
+          fi
+          image="ghcr.io/${REPOSITORY,,}"
+          for arch in amd64 arm64; do
+            docker load -i "image-$arch.tar"
+            docker tag "paperless-proton:test-$arch" "$image:sha-$GITHUB_SHA-$arch"
+            docker push "$image:sha-$GITHUB_SHA-$arch"
+          done
+          docker buildx imagetools create -t "$image:sha-$GITHUB_SHA" "$image:sha-$GITHUB_SHA-amd64" "$image:sha-$GITHUB_SHA-arm64"
+          test "$(gh api "$package_api" --jq '.visibility')" = private
+          digest="$(docker buildx imagetools inspect "$image:sha-$GITHUB_SHA" --format '{{.Manifest.Digest}}')"
+          printf 'Image for amd64 and arm64:\n\n`%s@%s`\n' "$image" "$digest" >> "$GITHUB_STEP_SUMMARY"
