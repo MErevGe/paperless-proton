@@ -11,3 +11,4 @@
 !build/bridge/
 !build/bridge/go.mod
 !build/bridge/go.sum
+!build/bridge/dependencies.go
