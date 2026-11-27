@@ -520,7 +520,7 @@ async function refresh(fresh = false) {
 
 $("#admin-form").addEventListener("submit", (event) => {
   event.preventDefault();
-  busy($("#admin-submit"), async () => {
+  void busy($("#admin-submit"), async () => {
     const data = { password: $("#admin-password").value };
     if (!configured) data.setup_token = $("#setup-token").value;
     clearSecrets();
@@ -546,7 +546,7 @@ for (const [id, path] of [
 ]) {
   $(`#${id}`).addEventListener("submit", (event) => {
     event.preventDefault();
-    busy(event.target.querySelector("button"), async () => {
+    void busy(event.target.querySelector("button"), async () => {
       const payload = Object.fromEntries(new FormData(event.target));
       event.target
         .querySelectorAll('input[type="password"]')
