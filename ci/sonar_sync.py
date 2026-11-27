@@ -5,6 +5,7 @@ import re
 import sys
 import time
 from dataclasses import asdict
+from itertools import chain
 from pathlib import Path
 from typing import Any
 
@@ -150,30 +151,40 @@ class Synchronizer:
                 },
             )
             time.sleep(1)
-        for change in changes:
-            path = self.repository + "/issues"
-            if change.number is not None:
-                path += f"/{change.number}"
-                current = object_value(self.github.request("GET", path))
-                managed = managed_tickets([current], self.project).get(change.identity)
-                state = {
-                    "title": current.get("title"),
-                    "body": current.get("body"),
-                    "state": current.get("state"),
-                    "labels": sorted(
-                        text_value(object_value(label).get("name"))
-                        for label in array_value(current.get("labels"))
-                    ),
-                }
-                if managed is None or state != change.expected:
-                    raise SyncError(
-                        "A GitHub issue changed after preview; rerun to preserve edits."
-                    )
-            self.require_analysis(analysis)
-            self.github.request(
-                "POST" if change.number is None else "PATCH", path, body=change.payload
+        created_closures: list[Change] = []
+        for change in chain(changes, created_closures):
+            closure = self.apply_change(analysis, change)
+            if closure is not None:
+                created_closures.append(closure)
+
+    def apply_change(self, analysis: str, change: Change) -> Change | None:
+        path = self.repository + "/issues"
+        if change.number is not None:
+            path += f"/{change.number}"
+            current = object_value(self.github.request("GET", path))
+            managed = managed_tickets([current], self.project).get(change.identity)
+            if managed is None or managed.snapshot != change.expected:
+                raise SyncError("A GitHub issue changed after preview; rerun to preserve edits.")
+        self.require_analysis(analysis)
+        payload = change.payload
+        if change.number is None:
+            payload = {key: payload[key] for key in ("title", "body", "labels")}
+        response = self.github.request(
+            "POST" if change.number is None else "PATCH", path, body=payload
+        )
+        time.sleep(1)
+        if change.number is None and change.payload.get("state") == "closed":
+            created = managed_tickets([response], self.project).get(change.identity)
+            if created is None:
+                raise SyncError("The created GitHub issue could not be verified.")
+            return Change(
+                "close",
+                change.identity,
+                created.number,
+                {"state": "closed", "state_reason": change.payload["state_reason"]},
+                created.snapshot,
             )
-            time.sleep(1)
+        return None
 
 
 def plan_path(requested: Path) -> Path:

@@ -12,6 +12,7 @@ LABELS = {
     "sonarqube": "Findings tracked from SonarQube Cloud",
     "sonarqube:issue": "Code quality and security issues",
     "sonarqube:hotspot": "Security review tasks; not confirmed vulnerabilities",
+    "false-positive": "Findings confirmed as false positives in SonarQube",
 }
 
 
@@ -38,6 +39,19 @@ class Finding:
     resolution: str
     impacts: tuple[tuple[str, str], ...]
     fixed: bool
+
+    @property
+    def false_positive(self) -> bool:
+        return self.kind == "issue" and (
+            self.status == "FALSE_POSITIVE"
+            or (self.status in {"CLOSED", "RESOLVED"} and self.resolution == "FALSE-POSITIVE")
+        )
+
+    @property
+    def close_reason(self) -> str | None:
+        if self.fixed:
+            return "completed"
+        return "not_planned" if self.false_positive else None
 
     @property
     def identity(self) -> tuple[str, str]:
@@ -138,10 +152,21 @@ class Ticket:
     title: str
     body: str
     state: str
+    state_reason: str | None
     labels: frozenset[str]
     identity: tuple[str, str]
     start: int
     end: int
+
+    @property
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "title": self.title,
+            "body": self.body,
+            "state": self.state,
+            "state_reason": self.state_reason,
+            "labels": sorted(self.labels),
+        }
 
 
 def managed_tickets(items: list[Any], project: str) -> dict[tuple[str, str], Ticket]:
@@ -173,11 +198,15 @@ def managed_tickets(items: list[Any], project: str) -> dict[tuple[str, str], Tic
         state = text_value(data.get("state"))
         if state not in {"open", "closed"}:
             raise SyncError("A GitHub issue has an invalid state.")
+        state_reason = data.get("state_reason")
+        if state_reason is not None:
+            state_reason = text_value(state_reason)
         result[identity] = Ticket(
             integer_value(data.get("number"), 1),
             text_value(data.get("title")),
             body,
             state,
+            state_reason,
             frozenset(
                 text_value(object_value(label).get("name"))
                 for label in array_value(data.get("labels"))
@@ -209,34 +238,33 @@ def plan_changes(findings: list[Finding], tickets: dict[tuple[str, str], Ticket]
         if ticket is None and finding.fixed:
             continue
         labels = {"sonarqube", f"sonarqube:{finding.kind}"}
+        if finding.false_positive:
+            labels.add("false-positive")
         payload: dict[str, Any] = {"title": finding.title, "body": finding.body}
         if ticket is None:
             payload["labels"] = sorted(labels)
+            if finding.close_reason is not None:
+                payload.update(state="closed", state_reason=finding.close_reason)
             changes.append(Change("create", finding.identity, None, payload))
             continue
         payload["body"] = ticket.body[: ticket.start] + finding.body + ticket.body[ticket.end :]
         if len(payload["body"].encode("utf-8")) > 65000:
             raise SyncError("A managed issue exceeds the body size limit; shorten its notes.")
         payload["labels"] = sorted((ticket.labels - LABELS.keys()) | labels)
-        desired_state = "closed" if finding.fixed else "open"
+        close_reason = finding.close_reason
+        desired_state = "closed" if close_reason is not None else "open"
+        reason_changed = close_reason is not None and ticket.state_reason != close_reason
         action = "update"
-        if desired_state != ticket.state:
-            action = "close" if finding.fixed else "reopen"
-            payload.update(
-                state=desired_state, state_reason="completed" if finding.fixed else "reopened"
-            )
+        if desired_state != ticket.state or reason_changed:
+            action = "close" if close_reason is not None else "reopen"
+            payload.update(state=desired_state, state_reason=close_reason or "reopened")
         if (
             payload["title"] == ticket.title
             and payload["body"] == ticket.body
             and frozenset(payload["labels"]) == ticket.labels
             and desired_state == ticket.state
+            and not reason_changed
         ):
             continue
-        expected = {
-            "title": ticket.title,
-            "body": ticket.body,
-            "state": ticket.state,
-            "labels": sorted(ticket.labels),
-        }
-        changes.append(Change(action, finding.identity, ticket.number, payload, expected))
+        changes.append(Change(action, finding.identity, ticket.number, payload, ticket.snapshot))
     return sorted(changes, key=lambda change: change.action == "close")
