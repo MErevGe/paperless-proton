@@ -65,6 +65,7 @@ class PaperlessTests(unittest.TestCase):
             "224.0.0.1",
             "240.1.1.1",
             "100.100.100.200",
+            "::ffff:100.100.100.200",
             "::ffff:127.0.0.1",
         ):
             resolve.return_value = [(socket.AF_INET, 1, 6, "", (address, 443))]
@@ -78,6 +79,19 @@ class PaperlessTests(unittest.TestCase):
         resolve.return_value += [(socket.AF_INET, 1, 6, "", ("127.0.0.1", 443))]
         with self.assertRaises(ValueError):
             target_address("mixed.test", 443)
+
+    @patch("bridge_container.paperless.socket.getaddrinfo")
+    def test_rejects_metadata_in_mixed_dns_without_blocking_vpn_addresses(self, resolve):
+        vpn_address = (socket.AF_INET, 1, 6, "", ("100.100.100.199", 443))
+        resolve.return_value = [vpn_address]
+        self.assertEqual(target_address("vpn.test", 443), "100.100.100.199")
+        for metadata_address in ("100.100.100.200", "::ffff:100.100.100.200"):
+            metadata = (socket.AF_INET, 1, 6, "", (metadata_address, 443))
+            for addresses in ([vpn_address, metadata], [metadata, vpn_address]):
+                with self.subTest(addresses=addresses):
+                    resolve.return_value = addresses
+                    with self.assertRaisesRegex(ValueError, "LAN, VPN or public"):
+                        target_address("mixed.test", 443)
 
     @patch("bridge_container.paperless.subprocess.run")
     def test_saves_encrypted_token_and_settings(self, run):
