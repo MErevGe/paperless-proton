@@ -27,6 +27,8 @@ def browser_checks(origin: str, password: str) -> None:
         page.get_by_label("Admin password", exact=True).fill("incorrect-password")
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.locator("#notice")).to_contain_text("Invalid password")
+        expect(page.locator("#admin-submit")).to_be_enabled()
+        expect(page.locator("#admin-password")).to_have_value("")
         page.get_by_label("Admin password", exact=True).fill(password)
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.get_by_role("heading", name="From inbox to archive.")).to_be_visible()
@@ -126,12 +128,29 @@ def browser_checks(origin: str, password: str) -> None:
         page.get_by_role("button", name="Close", exact=True).click()
         expect(page.locator("#bridge-password")).to_have_value("")
         page.get_by_label("Proton username or email").fill("example")
+        page.route(
+            "**/api/proton/login",
+            lambda route: route.fulfill(status=503, json={"error": "Connection unavailable"}),
+            times=1,
+        )
+        page.get_by_label("Proton password", exact=True).fill("test-password")
+        page.get_by_role("button", name="Connect account").click()
+        expect(page.locator("#notice")).to_have_text("Connection unavailable")
+        expect(page.get_by_role("button", name="Connect account")).to_be_enabled()
+        expect(page.get_by_label("Proton password", exact=True)).to_have_value("")
         page.get_by_label("Proton password", exact=True).fill("test-password")
         page.get_by_role("button", name="Connect account").click()
         expect(page.get_by_label("Authenticator code")).to_be_visible()
+        expect(page.locator("#challenge-password")).to_have_attribute(
+            "autocomplete", "one-time-code"
+        )
         page.get_by_label("Authenticator code").fill("123456")
         page.locator("#challenge-form").get_by_role("button", name="Continue").click()
         expect(page.get_by_label("Mailbox password", exact=True)).to_be_visible()
+        expect(page.locator("#challenge-password")).to_have_attribute(
+            "autocomplete", "current-password"
+        )
+        expect(page.locator("#challenge-password")).to_have_value("")
         page.get_by_role("button", name="Cancel sign-in").click()
         expect(page.locator("#proton-form")).to_be_visible()
         fixture["login"] = {"step": "waiting", "username": "example"}
@@ -142,6 +161,10 @@ def browser_checks(origin: str, password: str) -> None:
             "url": "https://verify.proton.me/?token=test",
         }
         expect(page.locator("#verification-link")).to_be_visible(timeout=10000)
+        expect(page.locator("#challenge-password")).to_have_attribute(
+            "autocomplete", "current-password"
+        )
+        expect(page.locator("#challenge-password")).to_have_value("")
         fixture["login"] = {"step": "error", "error": "Invalid authenticator code"}
         expect(page.locator("#login-error")).to_contain_text(
             "Invalid authenticator code", timeout=10000
