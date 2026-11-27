@@ -127,7 +127,7 @@ class FindingTests(unittest.TestCase):
         changes = plan_changes([fixed, new], tickets)
         self.assertEqual([change.action for change in changes], ["create", "close"])
         self.assertEqual(changes[1].payload["state_reason"], "completed")
-        closed = managed_tickets([ticket(fixed, state="closed")], PROJECT)
+        closed = managed_tickets([ticket(fixed, state="closed", state_reason="completed")], PROJECT)
         self.assertEqual(plan_changes([fixed], closed), [])
         reopen = plan_changes([active], closed)[0]
         self.assertEqual(reopen.action, "reopen")
@@ -135,7 +135,6 @@ class FindingTests(unittest.TestCase):
         self.assertEqual(plan_changes([], tickets), [])
         for status, resolution in (
             ("CLOSED", "REMOVED"),
-            ("CLOSED", "FALSE-POSITIVE"),
             ("RESOLVED", "WONTFIX"),
             ("OPEN", "FIXED"),
         ):
@@ -232,7 +231,7 @@ class SynchronizationTests(unittest.TestCase):
                     & query.keys()
                 )
         self.sync.apply(analysis, changes, labels)
-        self.assertEqual(len(self.fixture.writes), 5)
+        self.assertEqual(len(self.fixture.writes), len(LABELS) + 2)
         self.assertEqual(self.sync.prepare()[1:], ([], set()))
 
     def test_every_page_is_read_and_missing_findings_do_not_close_tickets(self):
@@ -381,6 +380,7 @@ class SynchronizationTests(unittest.TestCase):
             ("body", finding.body + "\nA new note"),
             ("user", {"id": 1, "type": "User"}),
             ("labels", [{"name": "urgent"}]),
+            ("state_reason", "not_planned"),
         ):
             self.fixture.tickets = [ticket(finding)]
             analysis, changes, labels = self.sync.prepare()

@@ -197,6 +197,7 @@ class HttpsIntegrationTests(unittest.TestCase):
         self.addCleanup(self.factory.stop)
 
     def test_full_preview_apply_update_close_and_retry_over_verified_tls(self):
+        self.fixture.issues[0]["issueStatus"] = "FALSE_POSITIVE"
         context = ssl.create_default_context(cafile=str(self.cert))
         env = {
             "SONAR_TOKEN": "sonar-test-token",
@@ -222,10 +223,20 @@ class HttpsIntegrationTests(unittest.TestCase):
             with patch("sys.argv", ["sonar-sync", "--plan", str(plan), "--apply"]):
                 self.assertEqual(main(), 0)
                 self.assertEqual(len(self.fixture.tickets), 2)
+                tracked = self.fixture.tickets[1]
+                self.assertEqual(
+                    (tracked["state"], tracked["state_reason"]), ("closed", "not_planned")
+                )
+                self.assertIn({"name": "false-positive"}, tracked["labels"])
+                self.fixture.issues[0]["issueStatus"] = "OPEN"
+                self.assertEqual(main(), 0)
+                self.assertEqual(tracked["state"], "open")
+                self.assertNotIn({"name": "false-positive"}, tracked["labels"])
                 self.fixture.issues[0]["issueStatus"] = "FIXED"
                 self.fixture.hotspots[0]["message"] = "Updated review request."
                 self.assertEqual(main(), 0)
                 self.assertEqual(self.fixture.tickets[1]["state"], "closed")
+                self.assertEqual(tracked["state_reason"], "completed")
                 self.assertEqual(main(), 0)
             self.assertEqual(json.loads(plan.read_text())["changes"], [])
         self.assertEqual(set(self.destinations), {"api.github.com", "sonarcloud.io"})

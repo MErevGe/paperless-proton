@@ -43,6 +43,7 @@ def ticket(finding, number=1, **changes):
         "title": finding.title,
         "body": finding.body,
         "state": "open",
+        "state_reason": None,
         "labels": [{"name": "sonarqube"}, {"name": "sonarqube:" + finding.kind}],
         "user": {"id": BOT_ID, "type": "Bot", "login": "github-actions[bot]"},
         **changes,
@@ -71,21 +72,26 @@ class ServiceFixture:
             if path.endswith("/labels"):
                 self.labels.append(body)
             elif method == "POST":
+                if "state" in body or "state_reason" in body:
+                    raise AssertionError("Creating an issue cannot set its state.")
                 self.tickets.append(
                     {
                         **body,
                         "number": len(self.tickets) + 1,
                         "state": "open",
+                        "state_reason": None,
                         "labels": [{"name": label} for label in body["labels"]],
                         "user": {"id": BOT_ID, "type": "Bot"},
                     }
                 )
+                return copy.deepcopy(self.tickets[-1])
             else:
                 target = next(
                     item for item in self.tickets if item["number"] == int(path.rsplit("/", 1)[1])
                 )
                 target.update(body)
-                target["labels"] = [{"name": label} for label in body["labels"]]
+                if "labels" in body:
+                    target["labels"] = [{"name": label} for label in body["labels"]]
             return {"ok": True}
         self.reads.append((path, copy.deepcopy(query)))
         if path.endswith("/git/ref/heads/main"):
